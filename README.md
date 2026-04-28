@@ -17,6 +17,8 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | electron | `skills/electron/` |
 | email-best-practices | `skills/email-best-practices/` |
 | graffiti-best-practices | `skills/graffiti-best-practices/` |
+| html | `skills/html/` |
+| instantdb | `skills/instantdb/` |
 | javascript-testing-patterns | `skills/javascript-testing-patterns/` |
 | motion-choreography-patterns | `skills/motion-choreography-patterns/` |
 | repo-quality-orchestrator | `skills/repo-quality-orchestrator/` |
@@ -27,3 +29,4 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | skill-authoring-and-sync | `skills/skill-authoring-and-sync/` |
 | skill-writer | `skills/skill-writer/` |
 | typography | `skills/typography/` |
+| ux-interface-design | `skills/ux-interface-design/` |

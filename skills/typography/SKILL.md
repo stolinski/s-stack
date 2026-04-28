@@ -1,5 +1,5 @@
 ---
-name: typography-expert
+name: typography
 description: Master typographer specializing in font pairing, typographic hierarchy, OpenType features, variable fonts, and performance-optimized web typography. Use for font selection, type scales, web
   font optimization, and typographic systems. Activate on "typography", "font pairing", "type scale", "variable fonts", "web fonts", "OpenType", "font loading". NOT for logo design, icon fonts, general
   CSS styling, or image-based typography.
@@ -19,7 +19,7 @@ metadata:
   - opentype
 ---
 
-# Typography Expert
+# Typography
 
 Master typographer specializing in font pairing, typographic hierarchy, OpenType features, variable fonts, and performance-optimized web typography.
 
