@@ -12,970 +12,690 @@ description: >
 
 # AgentBuilder Skill
 
-The effective agents guide is a living record that is not part of the specification, but intended to help humans and agents use the specification to craft effective agents. It is updated regularly and not bound to any specific version of the specification.
+This guide is a living record. It is not part of the Standard Agent Specification — it exists to help humans and coding agents *use* the spec to build effective agents. It is updated regularly and not bound to any spec version.
 
-Note: in this guide we occasionally discuss commands like `npmx` or `pnpm` — use whatever package manager the user prefers, these are just placeholders for the correct command.
+> Commands like `pnpm exec agents …` are placeholders. Use whichever package manager (`npm`, `pnpm`, `yarn`, `bun`) the project actually uses.
+
+For deeper reference material that this skill links to, see:
+
+- `agents/agents/AGENTS.md` — agent definition reference (created by `agents scaffold`)
+- `agents/prompts/AGENTS.md` — prompt and tool config reference
+- `agents/tools/AGENTS.md` — tool-writing patterns and `ThreadState` examples
+- `agents/models/AGENTS.md` — recommended model list (authoritative)
+- `agents/hooks/AGENTS.md` — hook reference
+- Canonical TypeScript types (full signatures): read `node_modules/@standardagents/spec/dist/` in your project, or browse `packages/spec/src/` on GitHub at https://github.com/standardagents/agentbuilder
+- Specification: https://standardagentspec.org/llms.txt
+- Builder docs: https://docs.standardagentbuilder.com/llms.txt
+
+> If the `agents/*/AGENTS.md` files don't exist in your project yet, run `pnpm exec agents scaffold` to create them.
+
+---
+
+## Before you write any code
+
+Most failed Standard Agent projects fail in the same six ways. Read this section first and answer all six questions explicitly before creating any code. Each links to the deeper section that explains *how*.
+
+**1. Architect the agent graph before picking types.**
+List the domains the system touches. Determine the tree (coordinator → domain agents → sub-domain agents). *Then* decide what each node is. Do not start by writing one agent and bolting tools onto it. → [Architecture & decomposition](#architecture--decomposition)
+
+**2. `dual_ai` is the default. `ai_human` is the exception.**
+`ai_human` is correct only when the thread itself is the chat surface (chat UI, website widget, AgentBuilder admin, direct API chat). For Slack, email, SMS, Discord, webhooks, polled inboxes, schedulers, or any other mediated channel, the human is just a tool target — the agent is `dual_ai`. The whole graph being `dual_ai` is fine and often cleaner. → [Interaction type](#interaction-type-dual_ai-is-the-default)
+
+**3. Every `dual_ai` agent must have explicit session boundaries.**
+Name its `sessionStop` tool. Name its `sessionFail` tool. Set a finite `maxSessionTurns`. Give side_b a real, non-redundant job. If you cannot say in one sentence what tool call ends the session, the agent is not designed yet. → [Session boundary discipline](#session-boundary-discipline)
+
+**4. Pick models from `current-models` only.**
+Never invent model strings from memory. Run `pnpm exec agents current-models`, choose by category, then run `pnpm exec agents available-models --provider=<name>` to confirm the exact string. → [Model selection](#model-selection)
+
+**5. Research every third-party API before writing the tool.**
+Fetch the official current docs. Confirm auth, base URL, endpoint paths, payload shapes, rate limits, error codes. Do not write a tool from memory of how an API "usually" works. APIs change. → [API research checklist](#api-research-checklist)
+
+**6. Check `ThreadState` before adding any dependency.**
+Before reaching for S3, Redis, an external cron, a queue service, or even `node:fs`, confirm the framework does not already provide the capability via `ThreadState`. It almost always does. → [ThreadState first](#threadstate-first)
+
+---
 
 ## What is a Standard Agent?
 
-In the Standard Agent paradigm agents are the atomic unit of an AI system and it is the composition of many domain-specific agents that produces efficacy. How large should the concerns of a given agent be? There is no hard or fast rule here, the question is a bit like how big should a React component be. However, in general Standard Agents can be effective using smaller and cheaper models — but smaller and cheaper models typically suffer from poor tool discernment when presented with a broad range of tools, especially a broad range of similar tools.
+In the Standard Agent paradigm, agents are the atomic unit of an AI system, and it is the *composition* of many domain-specific agents that produces efficacy. Standard Agents can be effective using small and cheap models — but small and cheap models suffer from poor tool discernment when presented with a broad, undifferentiated set of tools. Decomposition is what makes them work.
 
-A "gmail" agent, for example, will typically do better than a "google apps" agent. Those higher-level agents would instead be composed of many sub-service agents, and a larger coordinator agent would be the one with the primary objectives, business goals and logic, and ultimate authority. This is a fractal that can be scaled up to create even larger coordinators and larger agents. These agent-graphs, or agent-trees, are the core philosophy of Standard Agents and solves many industry problems such as progressive tool discovery, model-prompt tuning, context dilution, task resumability, and even compaction.
+A "gmail" agent will outperform a "google apps" agent. A higher-level "communications" coordinator composes the gmail, slack, and SMS agents. A still-higher "personal assistant" coordinator composes communications, research, scheduling, and finance. This is fractal: the same shape scales up to teams, departments, and entire products. These agent-graphs solve real industry problems — progressive tool discovery, model/prompt tuning, context dilution, task resumability, and compaction.
 
-However, just because we can use subagents to create complex interactions doesn't mean we have to. A subagent is always a two-sided conversation where each side can perform multiple steps per turn. Sometimes you just need to use a feature of a different model, without it being a full subagent, for example using nano bananna to generate an image. If you just need to have a tool call that generates an image, use a subprompt. You may want an asset generator subagent if, for example, the agent needs to perform QA on the generated asset to ensure it meets certain criteria.
+Just because subagents *can* compose complex behavior doesn't mean every step needs one. A subagent is a two-sided conversation where each side may take multiple steps per turn. Sometimes you only need a feature of a different model — generating an image, rewriting a paragraph in a more eloquent voice. For those, use a **subprompt** (a single LLM step exposed as a tool), not a subagent. Use a **subagent** when you need iteration, QA, reflection, or long-lived addressable behavior.
 
-Another example may be using an instruct model variant to run an agent, but a more eloquent model to write the actual text of the email that is sent to people. Again, that could be a subprompt. Having another model proofread the email that is written — that would be a subagent. One small note on that: when performing QA in a subthread, try to use different models from different providers on the agent side that is doing the proofreading. Models from the same labs tend to think their own output is quite good, even if it is not.
+When a subagent does QA on another model's output, prefer a *different provider* on the reviewing side. Same-lab models tend to rate their own output too generously.
 
-Example structure:
+### Example graph
 
-- `personal_assistant_coordinator`
-  - central dual-ai coordinator
-  - decides which domain owns the work
-  - aggregates state, plans, and responses
-  - has subprompts for producing images, or using a more eloquent model for writing
-- `communications_coordinator`
-  - owns all inbound and outbound communications work
-  - delegates to `gmail_agent`, `slack_agent`, and `text_message_agent`
-  - receives escalations from those channel agents and routes the next action
-- `research_assistant`
-  - owns information gathering and synthesis
-  - delegates to `browser_use_agent`, `google_drive_agent`, and `notes_agent`
-- optional additional branches
-  - `scheduling_coordinator`
-  - `travel_coordinator`
-  - `finance_ops_coordinator`
-  - `crm_coordinator`
-
-## Standard Agent Stack
-
-The standard agent spec defines exactly what an agent is made up of:
-
-- Providers (define how to interact with different LLM providers, and different model variants.)
-- Prompts (system instructions, and how to use tools, subagents, and subprompts)
-- Tools (define the functions that an agent can call to interact with the world, and other agents)
-- Agents (define the agent itself, how it uses prompts and tools)
-- Hooks (define custom code that can perform various internal operations such as modifying the prompt or changing the message history)
-- Effects (custom code that executes at a certain time)
-- Threads (the instance of a given agent, with its own state, message history, and filesystem)
-- Endpoints (built-in and custom endpoints exposed by an agent thread)
-
-Each of these is defined by the Standard Agent Specification.
-
-## Models
-
-The standard agent spec is model-agnostic, but it is important to understand how to use different models effectively within the paradigm. The most effective agents use a combination of smaller and larger models. The smallest model that produces sufficiently good results is always the best choice. Smaller models are cheaper, faster, and more likely to run on local hardware (eventually). However smaller models often struggle with discernment, coordination, and higher order reasoning like business objectives. So typically we'll want to use larger models for coordinators, and smaller models for discrete subagents.
-
-Different models are good at different things. The Standard Agents organization has identified a number of well-suited models for various tasks. To get the latest curated list run:
-
-```bash
-pnpm exec agents current-models
+```
+personal_assistant_coordinator         (dual_ai, top-level reasoning model)
+├── communications_coordinator         (dual_ai, resumable, explicit parent communication, note: children are explicit because they receive inbound messages and should filter out noise before returning)
+│   ├── gmail_agent                    (dual_ai, resumable, immediate, explicit parent communication)
+│   ├── slack_agent                    (dual_ai, resumable, immediate, explicit parent communication)
+│   └── sms_agent                      (dual_ai, resumable, immediate, explicit parent communication)
+├── research_assistant                 (dual_ai, resumable, explicit parent communication)
+│   ├── browser_use_agent              (dual_ai, resumable, implicit parent communication)
+│   ├── google_drive_agent             (dual_ai, resumable, implicit parent communication)
+│   └── notes_agent                    (dual_ai, resumable, implicit parent communication)
+├── scheduling_coordinator             (subprompt)
+└── finance_ops_coordinator            (dual_ai)
 ```
 
-When writing an agent, use `current-models` to choose a model that fits the use case, then use `available-models` to check the exact model string your installed provider exposes. If you have more than one configured provider, pass `--provider=<name>`.
+Note: no `ai_human` anywhere. The "human" enters via the gmail/slack/sms tool calls. The whole graph is autonomous.
 
-```bash
-pnpm exec agents available-models --provider=openai
+## The Standard Agent stack
+
+The spec defines an agent as a composition of:
+
+- **Providers** — how to talk to LLM providers and model variants
+- **Models** — named model definitions referencing a provider
+- **Prompts** — system instructions plus the tools, subprompts, and subagents available at that step
+- **Tools** — functions the agent can call to interact with the world (and other agents)
+- **Agents** — bind it all together: name, type, sides, session bindings
+- **Hooks** — custom code that intercepts lifecycle events (history filtering, message injection, tool result transforms)
+- **Effects** — custom code scheduled to run later
+- **Threads** — runtime instances of an agent, each with its own state, message history, and filesystem
+- **Endpoints** — built-in and custom HTTP endpoints exposed by a thread
+
+---
+
+## Architecture & decomposition
+
+**Procedure (do this in order, every time):**
+
+1. List the domains the system actually touches.
+2. Draw the tree on paper or in a comment block. Coordinators on top, leaf agents at the bottom.
+3. Pick interaction types. (Default `dual_ai`. Use `ai_human` only at chat-surface entry points.)
+4. Name session boundaries for every `dual_ai` node.
+5. Pick a model category for every node.
+6. List the third-party APIs each leaf needs and queue them for research.
+7. Map each capability to a `ThreadState` primitive before writing any custom plumbing.
+
+Only then start writing files.
+
+### Mega-agent smell test
+
+If a single agent has **more than ~8 tools across unrelated domains**, decompose it. Decomposition is rarely wrong; flattening usually is.
+
+Other smells that mean "decompose now":
+
+- One prompt has tools from two clearly different worlds (e.g., `send_email` and `query_postgres` and `generate_image`).
+- The system prompt is trying to teach the model when to use which tool by writing rules in English. Rules-in-prose are coordinator logic; promote them to a coordinator that picks subagents.
+- A model keeps calling the wrong tool because two tools have similar names or overlapping descriptions. Different domains, different agents.
+- The agent's prompt is over ~150 lines. That's almost always context dilution — split.
+
+### Worked example: wrong vs. right
+
+**Wrong** — one mega-agent with tools from unrelated domains:
+
+```
+personal_assistant (ai_human)
+  tools: send_gmail, read_gmail, search_ebay_listings, place_ebay_order,
+         track_ebay_shipment, create_calendar_event, list_calendar_events,
+         post_slack_message, read_slack_channel, query_stock_price,
+         execute_stock_trade, search_recipes, generate_image
 ```
 
-Note: the `name` of a model should indicate the use case for the model, for example: `extra_reasoning`, or `fast_tool_calls` or `image_generation`. Fallback models can be created for similar use cases, and should typically use different providers to increase the chances of at least one model producing good results. For example, you may have `extra_reasoning` models from both OpenAI and Anthropic.
+Gmail, eBay, calendar, Slack, stock trading, recipes, image gen — seven unrelated worlds in one tool list. The model picks `send_gmail` when it meant `post_slack_message`. It calls `execute_stock_trade` with eBay listing IDs. The system prompt grows 80 lines of rules trying to teach it which tool belongs to which world. Every bug fix breaks two unrelated flows.
 
-### Prompts
+**Right** — coordinator + domain subagents:
 
-Prompts define what actually gets sent to the LLM. They encompass model instructions, tool definitions, subprompts, and subagent tools, history inclusion, model selection, and more. The typescript definition of a prompt is as follows:
+```
+personal_assistant_coordinator (dual_ai, reasoning model)
+├── gmail_agent        tools: send_gmail, read_gmail
+├── ebay_agent         tools: search_ebay_listings, place_ebay_order,
+│                             track_ebay_shipment
+├── calendar_agent     tools: create_calendar_event, list_calendar_events
+├── slack_agent        tools: post_slack_message, read_slack_channel
+├── trading_agent      tools: query_stock_price, execute_stock_trade
+└── content_helpers    subprompts: search_recipes, generate_image
+```
+
+`personal_assistant_coordinator` runs a reasoning model and decides which domain owns the next step. Each leaf is a fast tool-calling model with a tight tool set it can actually discern between. A fix to the eBay flow can't break Gmail.
+
+### Coordinators
+
+Coordinators provide two things flat agents can't:
+
+1. **Inter-domain communication.** A `coding_coordinator` can ask `research_agent` to investigate a library, then hand the findings to `bash_agent` to run commands. The bash agent never needed to know the research agent existed.
+2. **Filtering.** A `gmail_agent` can filter spam well on its own. But the higher-level objectives of the organization — "what email actually matters to the CEO of the sprinkler hose company" — belong to a coordinator above it. The coordinator filters again before escalating.
+
+### Graph depth tradeoffs
+
+Deeper graphs add latency and create more inter-agent communication that can fail. But they also enable parallelism and isolation. A `marketing_communications_agent` can have a `social_media_agent` which has `twitter_agent`, `linkedin_agent`, and `facebook_agent` as children. That subtree handles posting workflows entirely without involving the top coordinator. Aim for depth that matches the natural hierarchy of the work, not depth for its own sake.
+
+---
+
+## Interaction type: `dual_ai` is the default
+
+> **`dual_ai` is the default agent shape. `ai_human` is the exception**, used only when the thread itself is the chat surface — chat UI, website widget, AgentBuilder admin, or an API the user is talking to directly.
+
+For **Slack, email, SMS, Discord, webhooks, polled inboxes, schedulers, or any other mediated channel**, the human is just a tool target. The agent on the framework side is `dual_ai`. The whole graph being `dual_ai` is fine — often cleaner.
+
+### The single decision
+
+Ask: **"Is the human typing directly into this thread?"**
+
+- **Yes** → the top-level agent is `ai_human`.
+- **No** → the top-level agent is `dual_ai`. The human enters the graph via a tool somewhere (e.g., a `send_slack_message` call inside a slack subagent).
+
+Do not default to `ai_human` just because a human is eventually involved. Ask where messages physically arrive.
+
+### The two shapes
+
+**Shape A — chat surface (`ai_human` at top):**
+
+```
+website_chatbot (ai_human)         ← user types in a chat widget
+  tools: search_products, lookup_order, escalate_to_human
+```
+
+**Shape B — mediated (`dual_ai` everywhere):**
+
+```
+slack_research_assistant (dual_ai, reasoning model)
+├── slack_agent (dual_ai, resumable) ← messages arrive via tool calls,
+│                                      not as thread messages
+└── research_agent (dual_ai)
+```
+
+In Shape B, side_a of `slack_research_assistant` plans the work and dispatches subagents. Side_b reviews and decides when the work is done. The "user" is a Slack channel reachable through `slack_agent`'s tools.
+
+### Handoffs (a special case of `ai_human`)
+
+When an `ai_human` agent calls another `ai_human` agent as a tool, the runtime does **not** spawn a new thread — it changes which prompt "owns" the existing thread. This is a *handoff*. Useful for stepwise human flows: an `onboarding_agent` collects information, then hands off to a `scheduling_agent` that books a meeting. The user keeps talking to the same thread.
+
+### Subprompts vs. subagents vs. handoffs
+
+- **Subprompt** — one LLM step exposed as a tool. Use to switch models for a focused task: image generation, polished writing, JSON extraction.
+- **Subagent** — full child thread with its own `ThreadState`. Use when you need iteration, QA, reflection, or long-lived addressable behavior. Always `dual_ai`.
+- **Handoff** — `ai_human` → `ai_human`, swaps prompt ownership of the same thread. Use for stepwise human-driven flows.
+
+A subagent can be:
+
+- **Blocking + non-resumable** — the parent waits, the child runs once, returns, and is gone (tool-call style)
+- **Blocking + resumable** — the parent waits but the child remains addressable for future calls
+- **Non-blocking + non-resumable** — fire-and-forget one-shot
+- **Non-blocking + resumable** — long-lived addressable child the parent can re-message later (e.g., a Slack monitor that lives as long as the parent)
+
+---
+
+## Session boundary discipline
+
+This section is a hard rule, not a suggestion. **Every `dual_ai` agent in the graph must explicitly define its session boundaries.** This is what makes whole-graph `dual_ai` safe.
+
+### Required for every `dual_ai` agent
+
+- **`sessionStop` tool binding** — names the tool call that ends the session with a result. Side_a or side_b invokes it when the work is done. Common patterns: `report_findings`, `submit_to_parent`, `final_answer`, `done`.
+- **`sessionFail` tool binding** — names the tool call that ends the session with a failure the parent should see. Common patterns: `escalate_blocked`, `report_unresolvable`, `give_up_with_reason`.
+- **`maxSessionTurns`** — a finite integer sized to the realistic upper bound for the task. Never omit this. A research subagent might be 20; an asset QA loop might be 6; a tight reflection loop might be 3.
+- **A real job for side_b** — reflection, QA, judging, alternative-perspective driving, devil's advocate. If side_b is "another instance of side_a," you don't have a `dual_ai` agent — collapse it to a single-side prompt or a coordinator pattern.
+- **Cross-provider QA** — when side_b reviews side_a's output, pick a model from a *different provider* than side_a. Same-lab models systematically over-rate their own work.
+
+### The smell test
+
+> If you cannot articulate in one sentence what tool call ends the session, the agent is not designed yet.
+
+Examples that pass:
+
+- "Side_a calls `submit_video_assets` once side_b approves the renders."
+- "Side_b calls `report_findings` after the research turn count exceeds 5 or it judges the topic exhausted."
+- "Either side calls `escalate_to_parent` if the customer policy question is unresolvable."
+
+Examples that fail:
+
+- "It just stops when it's done." (How does the runtime know?)
+- "Whichever side decides." (Decides by calling *what*?)
+
+### Why this matters
+
+A `dual_ai` agent with no `sessionStop`, no `sessionFail`, and no `maxSessionTurns` will burn turns until it hits a runtime cap, then fail in a way the parent can't interpret. Coding agents that have been bitten by this once will start defaulting to `ai_human` to "feel safer" — and then we're back to mega-agents and chat-surface confusion. Boundary discipline is what keeps `dual_ai` the default.
+
+---
+
+## Model selection
+
+**Rule: never write a model string the user did not request and `current-models` did not produce.**
+
+### Required workflow
+
+1. Run `pnpm exec agents current-models` to see the curated category list (e.g. `extra_reasoning`, `fast_tool_calls`, `writing`, `image_generation`, `tiny`).
+2. Choose the category that fits the role (table below).
+3. Run `pnpm exec agents available-models --provider=<name>` to confirm the exact provider model string.
+4. Define the model in `agents/models/<name>.ts` using `defineModel`.
+
+If you have multiple configured providers, pass `--provider=<name>` explicitly.
+
+### Role → category mapping
+
+| Role | Category | Notes |
+|---|---|---|
+| Top-level coordinator | `extra_reasoning` | The discerning brain. Don't skimp here. |
+| Domain subagent (gmail, slack, etc.) | `fast_tool_calls` | High volume, narrow tool set, latency matters. |
+| Eloquent text generation | `writing` | Use as a subprompt from a fast-tool-calling agent. |
+| Image generation | `image_generation` | Use as a subprompt. |
+| QA / reviewer side_b | `extra_reasoning` from a *different provider* than side_a | Same-lab QA is biased. |
+| Cheap classification, tagging, routing | `tiny` | Where speed and cost dominate quality. |
+
+### Fallback strategy
+
+Define more than one model per category, on different providers. The model `name` should describe the *use case*, not the provider, so a fallback can substitute transparently:
+
+```
+agents/models/extra_reasoning.ts          → primary (provider A)
+agents/models/extra_reasoning_fallback.ts → secondary (provider B)
+```
+
+Prompts and agents reference `extra_reasoning`; if the primary provider is down, the fallback is one rename away.
+
+For the authoritative list of which models currently fill each category, see `agents/models/AGENTS.md` in your project (created by `agents scaffold`). Do not embed the list here — it drifts.
+
+---
+
+## API research checklist
+
+This is the single biggest gap in most coding-agent-built tools. **Do not write a `defineTool` that touches a third-party API from memory.** APIs change. Auth flows change. Endpoints get deprecated. Read the current docs every time.
+
+### Before writing the tool
+
+1. **Fetch the official current docs.** Use WebFetch, the read-website skill, or a browser. Confirm:
+   - Auth method (bearer, OAuth, signed request, API key in header vs. query)
+   - Base URL and current API version
+   - Endpoint paths and HTTP methods
+   - Request payload shape (and required vs. optional fields)
+   - Response payload shape (success and error)
+   - Rate limits and `Retry-After` handling
+   - Pagination model (cursor, offset, link header)
+   - Idempotency rules — does retrying duplicate side effects?
+2. **Confirm SDK availability and Workers compatibility.** Is there a first-party JS/TS SDK? Does it run in Cloudflare Workers (no Node built-ins, no `fs`, no native modules, no long-lived sockets)? If not, use `fetch` directly. Most provider SDKs are not Workers-compatible out of the box.
+3. **Identify required secrets.** Declare them as `secret` variables, never `text`. Secrets must never be referenced in prompt text or returned to the model.
+4. **Map error modes explicitly.** Each gets handled, not ignored:
+   - `401` / `403` — auth failed. Surface a clear message; do not retry blindly.
+   - `404` — missing resource. Often a user-facing error; surface it.
+   - `409` — conflict. Often means the operation already happened; check before retrying.
+   - `429` — rate limited. Honor `Retry-After`. Retry with backoff.
+   - `5xx` — server error. Retry with exponential backoff, finite cap.
+   - `4xx` (other) — surface to the model so it can correct its arguments.
+5. **Prototype the raw call** in isolation — a single `fetch` against the real endpoint with a real token. Confirm the response shape *as observed*, not as documented. Docs lag.
+6. **Return shapes the model can actually use.** Strip noise. Surface IDs, names, statuses, and the fields the next step needs. Don't return the entire 12 KB JSON blob and hope the model picks the right field.
+
+> **Anti-pattern:** "I know the Slack API, I'll just write it." You don't. It changed last quarter. Read the docs.
+
+---
+
+## ThreadState first
+
+> **Rule:** Before adding any dependency or external service, check whether `ThreadState` already provides the capability.
+
+`ThreadState` is the unified API passed to every callable, hook, and endpoint. It abstracts the runtime — your tool may run on the edge, on a Worker, or on a Node server, and the same `state.readFile()` call works in all of them. Tools should **not** import `node:fs`, read `process.env`, or assume Node-shaped APIs.
+
+### Capability lookup table
+
+| What you need | Use this | Don't use |
+|---|---|---|
+| Store a file between turns | `state.writeFile` / `state.readFile` | S3, external blob store |
+| Persist small structured data across turns | `state.getValue` / `state.setValue` durable KV | External KV, Redis |
+| Persist large or binary data across turns | `state.writeFile` / `state.readFile` | External blob store |
+| Trigger work later | `state.scheduleEffect` | External cron, queue service |
+| Invoke another tool from inside a tool | `state.invokeTool` / `state.queueTool` | Re-implementing tool logic inline |
+| Read/write config and secrets | `state.env` / `state.envType` / `state.setEnv` | `process.env`, `.env` files |
+| Run isolated deterministic code | `state.runCode` with explicit bridges | `eval`, child processes, implicit runtime access |
+| Search files the thread has seen | `state.grepFiles` / `state.findFiles` | Reimplementing search |
+| Escalate / report status to the parent | `state.notifyParent` / `state.setStatus` | Custom message bus |
+| Load a sibling prompt / agent / model | `state.loadPrompt` / `state.loadAgent` / `state.loadModel` | Duplicating the definition |
+| Inspect or message a child thread | `state.children` / `state.getChildThread` | External orchestration |
+| Inject context the model should see | `state.injectMessage` / `state.queueMessage` | Stuffing the system prompt |
+| Read the thread's message history | `state.getMessages` / `state.getMessage` | Reimplementing storage |
+| Update an existing message | `state.updateMessage` | Mutating storage directly |
+| Read execution logs | `state.getLogs` | External observability shim |
+| Emit a runtime event | `state.emit` | Console logging |
+| Stop the thread | `state.terminate` | Throwing and hoping |
+
+### Method cheat sheet
+
+Discoverability reference. For full signatures, read the spec types from `node_modules/@standardagents/spec/dist/` (or browse `packages/spec/src/` on GitHub). Worked examples live in `agents/tools/AGENTS.md`.
+
+```
+Identity     threadId, agentId, userId, createdAt, children, terminated
+Messages     getMessages, getMessage, injectMessage, queueMessage, updateMessage
+Logs         getLogs
+Resources    loadModel, loadPrompt, loadAgent,
+             getChildThread, getParentThread,
+             getPromptNames, getAgentNames, getModelNames
+Env          env, envType, setEnv
+Parent       notifyParent, setStatus
+Tools        queueTool, invokeTool
+Effects      scheduleEffect, getScheduledEffects, removeScheduledEffect
+Events       emit
+Context      context (Record<string, unknown>, in-memory only)
+KV           getValue, setValue
+Files        writeFile, readFile, readFileStream, statFile, readdirFile,
+             unlinkFile, mkdirFile, rmdirFile, getFileStats,
+             grepFiles, findFiles, getFileThumbnail
+Execution    execution, terminate, runCode
+```
+
+### Durable key-value store
+
+Use `state.getValue()` and `state.setValue()` for small per-thread durable JSON values such as counters, checkpoints, cursors, tool state, and user preferences. Values survive restarts and are scoped to the current thread.
 
 ```ts
-export interface PromptDefinition<
-  N extends string = string,
-  S extends ToolArgs = ToolArgs,
-> {
-  /**
-   * Unique name for this prompt.
-   * Used as the identifier when referencing from agents or as a tool.
-   * Should be snake_case (e.g., 'customer_support', 'data_analyst').
-   */
-  name: N;
-
-  /**
-   * Description shown when this prompt is exposed as a tool.
-   * Should clearly describe what this prompt does for LLM tool selection.
-   */
-  toolDescription: string;
-
-  /**
-   * The system prompt content sent to the LLM.
-   * Can be either a plain string or a structured array for composition.
-   */
-  prompt: PromptContent;
-
-  /**
-   * Model to use for this prompt.
-   * Must reference a model defined in agents/models/.
-   */
-  model: StandardAgentSpec.Models;
-
-  /**
-   * Include full chat history in the LLM context.
-   * @default false
-   */
-  includeChat?: boolean;
-
-  /**
-   * Include results from past tool calls in the LLM context.
-   * @default false
-   */
-  includePastTools?: boolean;
-
-  /**
-   * Allow parallel execution of multiple tool calls.
-   * @default false
-   */
-  parallelToolCalls?: boolean;
-
-  /**
-   * Tool calling strategy for the LLM.
-   *
-   * - `auto`: Model decides when to call tools (default)
-   * - `none`: Disable tool calling entirely
-   * - `required`: Force the model to call at least one tool
-   *
-   * @default 'auto'
-   */
-  toolChoice?: 'auto' | 'none' | 'required';
-
-  /**
-   * Zod schema for validating inputs when this prompt is called as a tool.
-   */
-  requiredSchema?: S;
-
-  /**
-   * Declared variables for this prompt.
-   */
-  variables?: VariableDefinition[];
-
-  /**
-   * Tools available to this prompt.
-   * Can be:
-   * - string: Simple tool name (custom or provider tool)
-   * - SubpromptConfig: Sub-prompt used as a tool
-   * - PromptToolConfig: Tool with environment values and/or options
-   * - SubagentToolConfig: `dual_ai` subagent invocation behavior
-   *
-   * To enable handoffs, include ai_human agent names in this array.
-   *
-   * @example
-   * ```typescript
-   * tools: [
-   *   'custom_tool',                                    // Simple tool name
-   *   { name: 'other_prompt' },                         // Sub-prompt as tool
-   *   { name: 'file_search', env: { VECTOR_STORE_ID: 'vs_123' } },  // Tool with env values
-   * ]
-   * ```
-   */
-  tools?: (
-    | StandardAgentSpec.Callables
-    | SubpromptConfig
-    | PromptToolConfig
-    | SubagentToolConfig
-  )[];
-
-  /**
-   * Environment values provided by this prompt.
-   * Prompt values are the lowest-precedence source in runtime resolution.
-   */
-  env?: Record<string, string>;
-
-  /**
-   * Reasoning configuration for models that support extended thinking.
-   */
-  reasoning?: ReasoningConfig;
-
-  /**
-   * Number of recent messages to keep actual images for in context.
-   * @default 10
-   */
-  recentImageThreshold?: number;
-
-  /**
-   * Provider-specific options passed through to the provider.
-   * These override model-level providerOptions for this prompt.
-   *
-   * Options are merged in order (later wins):
-   * 1. model.providerOptions (defaults)
-   * 2. prompt.providerOptions (this field - overrides)
-   *
-   * @example
-   * ```typescript
-   * providerOptions: {
-   *   response_format: { type: 'json_object' },
-   * }
-   * ```
-   */
-  providerOptions?: Record<string, unknown>;
-
-  /**
-   * Hook IDs to run when this prompt is active.
-   * References hooks by their unique `id` property from defineHook().
-   * If not specified, falls back to agent-level hooks.
-   *
-   * @example
-   * ```typescript
-   * hooks: ['limit_to_20_messages', 'log_tool_calls']
-   * ```
-   */
-  hooks?: StandardAgentSpec.HookIds[];
-}
+const count = (await state.getValue<number>('invocation_count')) ?? 0;
+await state.setValue('invocation_count', count + 1);
 ```
 
-The `prompt` property is the system message for that LLM step. It is defined as a string or array of parts. If defined with parts, the prompt is rendered before being sent to the LLM and can contain dynamic content. For example, let's say our agent is powering a chatbot for a website that sells athletic shoes. We want the chatbot to be able to answer questions about the shoes, billing, shipping etc. To do this, we have many prompts, but we always want to use the same friendly and helpful tone.
+`setValue(key, null)` and `setValue(key, undefined)` delete the key. For larger payloads, binary data, user-visible artifacts, or content that should be shared as a file, use `state.writeFile()` / `state.readFile()` instead.
 
-To share "tone" prompt that just defines the tone and style of the chatbot, and then reference that prompt in all our other prompts as a part. This allows us to change the tone of the chatbot across all its functions by just changing one prompt.
+### Sandboxed code execution
+
+Use `state.runCode()` for model- or user-authored JavaScript/TypeScript instead of `eval` or `new Function`. The sandbox runs in Cloudflare Dynamic Workers, has no implicit thread state, filesystem, network, timers, or host globals, and only receives capabilities you explicitly bridge through `imports` or `globals`.
+
+```ts
+const run = state.runCode(
+  `
+    import { readFile } from "fs";
+
+    export async function summarize(path: string) {
+      const text = await readFile(path);
+      return text.slice(0, 200);
+    }
+  `,
+  {
+    language: 'typescript',
+    execute: { fn: 'summarize', args: ['/notes/input.txt'] },
+    imports: {
+      fs: {
+        readFile: async (path: string) => {
+          const file = await state.readFile(path);
+          return file ? new TextDecoder().decode(file) : '';
+        },
+      },
+    },
+  },
+);
+
+const result = await run;
+```
+
+By default, `runCode()` executes the `default` export with no args. Use `execute: { fn, args }` to call a named export or pass arguments; `fn: 'default'` calls the default export with args. Use `modules` to provide local relative ES modules. The result is a status object: successful runs return `status: 'success'`, `result`, `logs`, `reports`, and `durationMs`; failed runs return an error status and an `error` object. Call `run.terminate(reason)` from your own timeout budget when needed.
+
+### Notes on a few that are easy to misuse
+
+- **`state.context`** is in-memory for the *current execution*. It is not durable across thread restarts. For durable structured state, use `state.getValue` / `state.setValue`.
+- **`state.getValue` / `state.setValue`** are durable per-thread JSON storage. Use them for small structured state; use files for larger content or artifacts.
+- **`state.env` / `state.envType` / `state.setEnv`** are for runtime configuration and secrets. `state.env(name)` resolves thread -> account -> instance -> agent -> prompt. `state.envType(name)` returns `'secret'` by default; `'text'` means the value may be shown in tool output. `state.setEnv(name, value, { type: 'text' | 'secret' })` writes thread-scoped env and propagates to active descendants. Omit `type` only when preserving the existing type is intentional; new keys default to secret.
+- **`state.runCode`** runs JavaScript or TypeScript in an isolated Dynamic Worker sandbox. The sandbox does not receive `ThreadState`, env, files, network, or host globals implicitly. Pass exact capabilities through `imports`, `globals`, `modules`, and `execute`. It executes exported values/functions; code such as `console.log(fibonacci(5))` can log, but it must still `export default ...` or export a named function/value for the host to receive a result.
+- **`state.scheduleEffect`** runs a named effect after a delay. It survives restarts. This is your cron, your queue, and your retry timer all in one.
+- **`state.invokeTool` vs `state.queueTool`** — `invokeTool` runs synchronously and returns the result; `queueTool` schedules the call to run later in the normal tool-call flow. Prefer `queueTool` when the model should see the result as a regular tool call.
+- **`state.notifyParent`** — for resumable subagents with `parentCommunication: 'explicit'`, this is the only way the child talks to the parent. Use it sparingly; every notification interrupts the parent.
+- **File attachments** use the path convention `/attachments/{filename}.{ext}`. Always use this path when passing files between agents — the runtime copies them across thread filesystems automatically.
+
+### Sandboxed code env bridge pattern
+
+When building a coding agent that runs user-authored code, do **not** expose all thread env and do **not** rely on `process.env`. Use an explicit allowlist stored in durable KV:
+
+1. A setup tool such as `set_code_envs` (called `set_code_run_envs` in the built-in sandboxed coding agent) receives the required env names and stores the allowlist with `state.setValue(...)`.
+2. The execution tool reads that allowlist with `state.getValue(...)`.
+3. For each allowed name, the execution tool resolves `await state.env(name)` and `await state.envType(name)`. If a value is missing, it may create an empty thread env entry with `state.setEnv(name, '', { type: 'secret' })` so the UI can prompt the user.
+4. The execution tool calls `state.runCode(source, { imports: { env: { env: allowedValues } }, ... })`, exposing only the whitelisted env object.
+5. The tool redacts values whose `envType` is `secret` from results, reports, logs, and errors. Values marked `text` may appear.
+
+The prompt for a coding agent must explain this exact interface. Tell the model to call the allowlist setup tool before running code, then import a static object from `"env"`:
+
+```ts
+import { env } from "env";
+
+const apiKey = env.WEATHER_API_KEY;
+```
+
+Also tell it what **not** to do: do not read `process.env`, do not call `env()` as a function, do not `await` env values, do not use named env imports, and do not pass env values around as tool arguments.
+
+---
+
+## Tools
+
+A "tool" is anything an agent can call. There are three kinds:
+
+1. **Callables** — TypeScript functions defined via `defineTool` in `agents/tools/`. The primary way to interface with the outside world: APIs, databases, business logic, and (sometimes) other agents. Each callable receives a `ThreadState`. Do not assume Node APIs are available — your code may run on the edge.
+2. **Subprompts** — prompts exposed as tools via their `toolDescription`. A single-step LLM call. Use for switching models on a focused task (image generation, polished writing, JSON extraction).
+3. **Subagents** — full agents exposed as tools via `exposeAsTool: true` on the agent definition. Use when you need iteration, QA, reflection, or long-lived addressable behavior. Always `dual_ai`.
+
+### Provider-visible argument schemas
+
+Tool argument schemas are sent to model providers, and strict tool-calling providers commonly reject JSON Schema objects unless every object schema has `additionalProperties: false`. This applies recursively, not just at the top level. If a tool has nested object args, arrays of objects, `anyOf` object branches, prompt `requiredSchema`, or an agent exposed as a tool, verify the model-facing schema contains `additionalProperties: false` for every `type: "object"`.
+
+Common failure modes:
+
+- `z.record(...)` can emit `propertyNames`, which some providers reject for tool schemas. Prefer explicit `z.object({ ... })` shapes for provider-visible tool args.
+- `z.object({}).catchall(...)` can emit `additionalProperties: {}`. Strict providers expect the boolean `false`, not an object schema.
+- "Arbitrary object" tool args are a poor fit for strict provider tool schemas. Prefer a JSON string for truly arbitrary payloads, or define the object properties explicitly.
+
+### `PromptDefinition` cheat sheet
+
+A prompt is what actually gets sent to the LLM at one step. Set on each prompt file in `agents/prompts/`. For full signatures, read the spec types from `node_modules/@standardagents/spec/dist/` (or browse `packages/spec/src/` on GitHub), and see `agents/prompts/AGENTS.md`.
+
+```
+PromptDefinition
+  name                   string                          unique snake_case identifier
+  toolDescription        string                          shown when this prompt is exposed as a tool
+  prompt                 string | PromptContent[]        system prompt (string, or composable parts)
+  model                  ModelName                       references agents/models/<name>
+  includeChat            boolean (default false)         pass full chat history to this LLM step
+  includePastTools       boolean (default false)         pass past tool call results
+  parallelToolCalls      boolean (default false)         allow multiple tool calls per turn
+  toolChoice             'auto' | 'none' | 'required'    tool calling strategy (default 'auto')
+  requiredSchema         ZodSchema                       validate args when called as a tool
+  variables              VariableDefinition[]            declared text/secret variables
+  tools                  (string | SubpromptConfig | PromptToolConfig | SubagentToolConfig)[]
+                                                         tools available at this step
+  env                    Record<string, string>          prompt-level env values (lowest precedence)
+  reasoning              ReasoningConfig                 extended thinking config (for models that support it)
+  recentImageThreshold   number (default 10)             how many recent messages keep real images
+  providerOptions        Record<string, unknown>         passthrough to the provider (overrides model defaults)
+  hooks                  HookId[]                        prompt-scoped hooks (overrides agent hooks)
+```
+
+### Composable prompts: the `tone` pattern
+
+`prompt` can be a string or an array of parts. Use parts to compose a shared "tone" or "persona" across many prompts so changes flow through one place.
 
 ```ts
 const tonePrompt: PromptDefinition = {
   name: 'company_tone',
   toolDescription: 'Defines the tone and style of the chatbot.',
-  prompt: `You are a friendly and helpful customer support assistant for an athletic shoe company. You always respond in a positive and upbeat tone, even when the customer is upset. You use simple language and avoid technical jargon. Your goal is to help the customer with their issue and make them feel good about shopping with us.`,
-  model: 'tiny_model',
+  prompt: `You are a friendly and helpful customer support assistant for an athletic shoe company. You always respond in a positive and upbeat tone, even when the customer is upset. You use simple language and avoid technical jargon.`,
+  model: 'tiny',
 };
-```
 
-Then in another prompt we can reference that tone prompt:
-
-```ts
 const shippingPrompt: PromptDefinition = {
   name: 'shipping_inquiries',
   toolDescription: 'Handles customer questions about shipping.',
   prompt: [
-    { type: 'include', prompt: 'company_tone' }, // Reference the tone prompt as a part
-    { type: 'text', content: `Details about the products:...` }
+    { type: 'include', prompt: 'company_tone' },
+    { type: 'text', content: 'Details about shipping policies: ...' },
   ],
-  model: 'tiny_model',
+  model: 'tiny',
 };
 ```
 
-Additionally, we can use the `env` property to provide dynamic content that can be referenced in the prompt. This can be especially helpful for packed agents that get distributed to other people, businesses, or industries. For example, we could create a generic ecommerce assistant agent that uses a `PRODUCT_INVENTORY` env to customize the agent to the specific products of the business that is using it.
+Use `{ type: 'env', property: 'PRODUCT_INVENTORY' }` parts to inject runtime values into the prompt. Combined with `variables`, this lets a generic agent be specialized per-thread without code changes:
 
 ```ts
 {
-// ...
   name: 'ecommerce_assistant',
-  toolDescription: 'An assistant for ecommerce businesses that can answer questions about products, inventory, and orders.',
+  toolDescription: 'Assistant for ecommerce businesses.',
   prompt: [
-    { type: 'text', content: `You are an assistant for an ecommerce business. You help customers with their questions about products, inventory, and orders. Here is the current product inventory: ` },
-    { type: 'env', property: 'PRODUCT_INVENTORY' }, // Reference the PRODUCT_INVENTORY env variable
+    { type: 'text', content: 'You help customers with products and orders. Current inventory: ' },
+    { type: 'env', property: 'PRODUCT_INVENTORY' },
   ],
-  model: 'tiny_model',
+  model: 'tiny',
   variables: [
     {
-      /** Environment variable/property name */
       name: 'PRODUCT_INVENTORY',
-      /** Value type: 'text' or 'secret' */
       type: 'text',
-      /** Whether this variable is required to execute */
-      required: true;
-      /**
-      * Whether this variable is scoped to the declarer agent subtree.
-      *
-      * Scoped variables do not inherit parent thread env values. Descendants of
-      * the declarer still inherit scoped values from that declarer thread.
-      *
-      * @default false
-      */
-      scoped: false;
-      /** Human-readable description (empty string when not provided) */
-      description: 'The full inventory of products, including names, descriptions, and stock levels.',
-    }
-  ]
+      required: true,
+      description: 'Full product inventory with names, descriptions, and stock levels.',
+    },
+  ],
 }
 ```
 
-## Tools
+### `AgentDefinition` cheat sheet
 
-Tools are a generic term for anything an agent can "call". In practice there are 3 types of tools:
+The agent definition binds prompts and sides together. Set on each file in `agents/agents/`. For full signatures, see `agents/agents/AGENTS.md`.
 
-1. Callables: these are TypeScript functions that are defined via `defineTool` in the `tools` directory. These should be created as the primary mechanism for interfacing with the outside world, interacting with APIs, database, business logic, and often even other agents. Each callable receives a `ThreadState` object. You should not assume that the function is being executed on a node server; it may be an edge function, for example, so do not use node imports if possible. Instead use the `ThreadState` to perform any necessary operations (see the ThreadState documentation for more details and examples).
-
-2. Subprompts: these are prompts that can be called as tools. They are defined in the `prompts` directory and have a `toolDescription` property that indicates they can be used as tools, and are useful for switching models for a small task, like writing some text, or generating an image.
-
-3. Subagents: these are full agents that can be called as tools. They are defined in the `agents` directory and have `exposeAsTool: true` in their agent definition. Subagents are useful when you need a more complex interaction that requires multiple steps, or when you want to leverage the unique capabilities of a different model that is better suited for a specific task.
-
-There are lots of options for how tools are defined on their respective prompt:
-
-```ts
-{
-  // ...
-  tools: {
-    /**
-    * Agent callable name.
-    *
-    * Must reference a `dual_ai` agent with `exposeAsTool: true`.
-    */
-    name: T;
-
-    /**
-    * Whether parent execution blocks until the subagent returns a result.
-    *
-    * - `true`: Parent waits for completion (tool-call style)
-    * - `false`: Parent continues immediately and receives results asynchronously
-    *
-    * @default true
-    */
-    blocking?: boolean;
-
-    /**
-    * Property from tool-call arguments used as the initial message sent to the
-    * subagent on invocation.
-    *
-    * Uses the same semantics as {@link SubpromptConfig.initUserMessageProperty}.
-    */
-    initUserMessageProperty?: StandardAgentSpec.SchemaFields<T>;
-
-    /**
-    * Property from tool-call arguments containing attachment path(s) that should
-    * be sent to the subagent on invocation.
-    *
-    * Uses the same semantics as {@link SubpromptConfig.initAttachmentsProperty}.
-    */
-    initAttachmentsProperty?: StandardAgentSpec.SchemaFields<T>;
-
-    /**
-    * Property from tool-call arguments used to assign a human-readable name for
-    * each spawned child thread instance.
-    *
-    * Implementations SHOULD store this as a thread tag in the form
-    * `name:<value>` so UIs can render a concise per-instance title.
-    */
-    initAgentNameProperty?: StandardAgentSpec.SchemaFields<T>;
-
-    /**
-    * Execute this tool immediately when the prompt becomes active.
-    *
-    * - `true`: Execute immediately using runtime defaults.
-    * - Object: Execute immediately with explicit per-instance env relationships.
-    *
-    * When the object form is used:
-    * - `scopedEnv` names the per-instance env values copied into the child thread.
-    * - `nameEnv` and `descriptionEnv` identify the only per-instance env values
-    *   that runtimes may expose to an internal bootstrap model when deriving
-    *   initial child arguments.
-    *
-    * Runtimes MUST NOT expose `scopedEnv` values to the model unless the same env
-    * name is explicitly designated by `nameEnv` or `descriptionEnv`.
-    *
-    * Immediate tools run before the first LLM step for that activation.
-    */
-    immediate?:
-      | boolean
-      | {
-          /**
-          * Scoped env name whose value may be used as the safe per-instance name
-          * hint for child bootstrap.
-          */
-          nameEnv?: string;
-
-          /**
-          * Scoped env name whose value may be used as the safe per-instance
-          * description hint for child bootstrap.
-          */
-          descriptionEnv?: string;
-
-          /**
-          * Scoped env names that should be copied into the child thread for each
-          * immediate instance group.
-          */
-          scopedEnv?: string[];
-        };
-
-    /**
-    * Optional branch flag env name.
-    *
-    * When set, this subagent is only enabled when the named env resolves to
-    * `true`, `1`, or `yes` (case-insensitive).
-    */
-    optional?: string;
-
-    /**
-    * Resumability configuration.
-    *
-    * - `false` (default): Non-resumable subagent
-    * - Object: Resumable subagent with message routing and instance limits
-    *
-    * When resumable mode is enabled, runtimes SHOULD provide a built-in create
-    * and message lifecycle interface instead of exposing raw agent callables for
-    * new instance creation.
-    */
-    resumable?:
-      | false
-      | {
-          /**
-          * Which side of the child `dual_ai` conversation receives parent messages.
-          *
-          * - `side_a`: Messages are queued as `role: 'user'`
-          * - `side_b`: Messages are queued as `role: 'assistant'`
-          */
-          receives_messages: 'side_a' | 'side_b';
-
-          /**
-          * Maximum concurrent instances for this subagent tool.
-          *
-          * When reached, implementations may remove this tool from subsequent LLM
-          * requests and route new messages to existing instances.
-          *
-          * @default unlimited
-          */
-          maxInstances?: number;
-
-          /**
-          * How this child reports back to its parent.
-          *
-          * - `implicit` (default): Child completion is automatically queued to the parent.
-          * - `explicit`: The runtime does not auto-queue child completion; tools/hooks may
-          *   use thread APIs such as `state.notifyParent()` when they choose to escalate.
-          */
-          parentCommunication?: 'implicit' | 'explicit';
-        };
-    } |
-    {
-        /**
-        * Name of the tool (custom tool or provider tool).
-        */
-        name: StandardAgentSpec.Callables;
-
-        /**
-        * Environment variable values for this tool.
-        */
-        env?: Record<string, string>;
-        /**
-        * @deprecated Use `env` instead.
-        */
-        tenvs?: Record<string, unknown>;
-
-        /**
-        * Static options for this tool.
-        * Passed to the tool handler at execution time.
-        */
-        options?: Record<string, unknown>;
-      } | {
-      /**
-      * Name of the sub-prompt or agent to call.
-      * Must be a prompt defined in agents/prompts/ or an agent in agents/agents/.
-      */
-      name: T;
-
-      /**
-      * Include text response content from sub-prompt execution in the result string.
-      * @default true
-      */
-      includeTextResponse?: boolean;
-
-      /**
-      * Serialize tool calls made by the sub-prompt (and their results) into the result string.
-      * @default true
-      */
-      includeToolCalls?: boolean;
-
-      /**
-      * Serialize any errors from the sub-prompt into the result string.
-      * @default true
-      */
-      includeErrors?: boolean;
-
-      /**
-      * Property from the tool call arguments to use as the initial user message
-      * when invoking the sub-prompt or agent.
-      *
-      * Autocompletes to fields from the prompt's requiredSchema (or agent's side_a prompt schema).
-      *
-      * @example
-      * If the tool is called with `{ query: "search term", limit: 10 }` and
-      * `initUserMessageProperty: 'query'`, the sub-prompt will receive
-      * "search term" as the initial user message.
-      */
-      initUserMessageProperty?: StandardAgentSpec.SchemaFields<T>;
-
-      /**
-      * Property containing attachment path(s) to include as multimodal content
-      * when invoking the sub-prompt or agent.
-      *
-      * Autocompletes to fields from the prompt's requiredSchema (or agent's side_a prompt schema).
-      * Supports both a single path string or an array of paths.
-      *
-      * @example
-      * If the tool is called with `{ image: "/attachments/123.jpg" }` and
-      * `initAttachmentsProperty: 'image'`, the sub-prompt will receive
-      * the image as an attachment in the user message.
-      *
-      * @example
-      * If the tool is called with `{ images: ["/attachments/a.jpg", "/attachments/b.jpg"] }` and
-      * `initAttachmentsProperty: 'images'`, the sub-prompt will receive
-      * both images as attachments.
-      */
-      initAttachmentsProperty?: StandardAgentSpec.SchemaFields<T>;
-    } |
-    string /* simple tool name with no extra options * /;
-}
+```
+AgentDefinition
+  name              string                       unique snake_case identifier
+  type              'ai_human' | 'dual_ai'       default 'ai_human' — but see "dual_ai is the default"
+  maxSessionTurns   number                       REQUIRED for dual_ai. Finite turn cap.
+  sideA             SideConfig                   AI side (or first AI in dual_ai)
+  sideB             SideConfig                   second AI side; required for dual_ai
+  exposeAsTool      boolean (default false)      enables this agent to be called as a tool by other prompts
+  toolDescription   string                       required if exposeAsTool: true
+  description       string                       brief human description for UIs
+  icon              string                       URL or absolute path
+  env               Record<string, string>       agent-level env values
+  hooks             HookId[]                     agent-scoped hooks (when prompts don't specify their own)
 ```
 
-Excellent orchestration is the creation of models definitions, prompts, tools, subprompts, subagents, and agent definitions to tie everything together.
+`SideConfig` is where you bind `defaultPrompt`, `defaultModel`, and the **session lifecycle bindings**:
 
+- `sessionStop` — name of the tool whose call ends the session with a result
+- `sessionFail` — name of the tool whose call ends the session with a failure
+- `sessionStatus` — optional, a tool used to update the session status mid-run
 
-## Subprompts vs Handoffs vs Subagents
+These are the bindings the [Session boundary discipline](#session-boundary-discipline) section refers to. Every `dual_ai` agent must set them.
 
-A subprompt allows a `prompt` definition to be run with a single step as if it was a tool. The result of the subprompt is returned to the thread as if it is a tool result. Subprompts are a useful way to use a different model for a specific task. For example, an agent may use a subprompt to leverage a better image generation model.
+Packaging fields (`packageName`, `version`, `author`, `license`) exist for the agent packing system; ignore them unless you're publishing.
 
-Subprompts can receive the entire context of the parent thread if the prompt definition has `includeChat: true` and `includePastTools: true`. If those are set to false, then the subprompt receives no context at all, and it should use `initUserMessageProperty` and optionally `initAttachmentsProperty` instead. These properties specify what explicit context from the parent thread should be exposed, and their values are provided as if it is a `user` requesting the subprompt to run. The exact text the user provides will be the `initUserMessageProperty` value, and optionally any file attachments specified using the `/attachments/{filename}.{ext}` convention (`initAttachmentsProperty` should be an array of strings).
+### `SubagentToolConfig` cheat sheet
 
-A subagent on the other hand is a full agent thread, with its own `ThreadState`. Subagents can be:
+This is where parent/child architecture is actually configured — it lives on the *parent prompt's* `tools` array. Knowing every field exists is essential; full signatures live in the spec types (`node_modules/@standardagents/spec/dist/`, or `packages/spec/src/` on GitHub).
 
-- Blocking and non-resumable
-- Blocking and resumable
-- Non-blocking and non-resumable
-- Non-blocking and resumable
-
-These distinctions indicate how a subagent appears to its parent agent. A non-resumable subagent is very much like a tool call from the parent's perspective. It calls the "tool" the subagent runs for a while and returns a result. A resumable subagent however, becomes an addressable part of the agent graph, the parent can communicate with it receive results from it, and inspect its status. Resumable subagents can be as long-lived as the parent itself. For example a LinkedIn subagent may be permanently monitoring a particular linked in account and advising the parent coordinator when messages that would be important for the owner are received.
-Blocking and non-blocking indicates whether the parent thread waits for the subagent to finish before it continues. A non-blocking subagent allows the parent thread to continue its work while the subagent is running, and the parent can receive messages from the subagent.
-
-A handoff is when an `ai_human` agent is used as a tool by another `ai_human` agent. This is a special case and rather than spawn a new thread, it changes which prompt "owns" that thread — in other words it hands off control from one agent to another. This is very useful in a number of applications where a human is being led through a series of steps, for example, an onboarding agent may collect necessary information from a user, and then "handoff" to another agent which performs a different function, for example, a scheduling agent that books meetings based on the information collected by the onboarding agent.
-
-Subagents should always be `dual_ai`. `dual_ai` agents are fully autonomous and require no input from a human. Use `side_a` and `side_b` to perform reflection and reasoning on the results of the communication. For example if a subagent is tasked with generating assets for a video game, and those assets need to be on a green background, the `side_a` of the subagent can generate the assets, and the `side_b` can review the assets and determine if they meet the criteria. If they do, the `side_b` can communicate back to the parent coordinator via the tool defined as the `sessionStop` tool. If they do not meet the criteria, `side_b` can inform `side_a` in which ways the image needs to change before it can be approved.
-
-The following is the official shape of the agent definition by which these kinds of interactions can be configured:
-
-```ts
-export interface AgentDefinition<
-  N extends string = string,
-  Prompt extends string = StandardAgentSpec.Prompts,
-  Callable extends string = StandardAgentSpec.Callables,
-> {
-  /**
-   * Unique name for this agent.
-   * Used as the identifier for thread creation and handoffs.
-   * Should be snake_case (e.g., 'support_agent', 'research_flow').
-   */
-  name: N;
-
-  /**
-   * Agent conversation type.
-   *
-   * - `ai_human`: AI conversing with a human user (default)
-   * - `dual_ai`: Two AI participants conversing
-   *
-   * @default 'ai_human'
-   */
-  type?: AgentType;
-
-  /**
-   * Maximum total turns across both sides.
-   * Only applies to `dual_ai` agents.
-   * Prevents infinite loops in AI-to-AI conversations.
-   */
-  maxSessionTurns?: number;
-
-  /**
-   * Configuration for Side A.
-   * For `ai_human`: This is the AI side.
-   * For `dual_ai`: This is the first AI participant.
-   */
-  sideA: SideConfig<Prompt, Callable>;
-
-  /**
-   * Configuration for Side B.
-   * For `ai_human`: Optional, the human side doesn't need config.
-   * For `dual_ai`: Required, the second AI participant.
-   */
-  sideB?: SideConfig<Prompt, Callable>;
-
-  /**
-   * Expose this agent as a tool for other prompts.
-   * Enables agent composition and handoffs.
-   * When true, other prompts can invoke this agent as a tool.
-   * @default false
-   */
-  exposeAsTool?: boolean;
-
-  /**
-   * Description shown when agent is used as a tool.
-   * Required if exposeAsTool is true.
-   * Should clearly describe what this agent does.
-   */
-  toolDescription?: string;
-
-  /**
-   * Brief description of what this agent does.
-   * Useful for UIs and documentation.
-   *
-   * @example 'Handles customer support inquiries and resolves issues'
-   */
-  description?: string;
-
-  /**
-   * Icon URL or absolute path for the agent.
-   * Absolute paths (starting with `/`) are converted to full URLs in API responses.
-   *
-   * @example 'https://example.com/icon.svg' or '/icons/support.svg'
-   */
-  icon?: string;
-
-  /**
-   * Environment values provided by this agent.
-   * Agent values are lower priority than thread/account/instance values.
-   */
-  env?: Record<string, string>;
-
-  // ============================================================================
-  // Package Metadata (for packing/unpacking)
-  // ============================================================================
-
-  /**
-   * npm package name for this agent when packed.
-   * Used by the packing system to maintain consistent package identity
-   * across pack/unpack cycles.
-   *
-   * @example 'standardagent-support-agent', '@myorg/support-agent'
-   */
-  packageName?: string;
-
-  /**
-   * Package version (semver format).
-   * Used by the packing system to track versions across pack/unpack cycles.
-   * When re-packing, this version is auto-incremented by the pack modal.
-   *
-   * @example '1.0.0', '2.3.1-beta.1'
-   */
-  version?: string;
-
-  /**
-   * Package author/copyright holder.
-   * Used by the packing system for the LICENSE file and package.json author field.
-   *
-   * @example 'John Doe', 'Acme Corp'
-   */
-  author?: string;
-
-  /**
-   * License identifier (SPDX format).
-   * Used by the packing system for LICENSE file generation.
-   *
-   * @example 'MIT', 'Apache-2.0', 'ISC'
-   */
-  license?: string;
-
-  /**
-   * Hook IDs to run for this agent.
-   * References hooks by their unique `id` property from defineHook().
-   * These run when prompts don't specify their own hooks.
-   *
-   * @example
-   * ```typescript
-   * hooks: ['log_messages', 'track_tool_usage']
-   * ```
-   */
-  hooks?: StandardAgentSpec.HookIds[];
-}
+```
+SubagentToolConfig — entry on a parent prompt's `tools` array
+  name                       string                      dual_ai agent to invoke (must have exposeAsTool: true)
+  blocking                   boolean (default true)      parent waits for result, vs. fire-and-forget
+  immediate                  bool | object               spawn child when prompt activates, before any LLM step
+                                                         object form: { nameEnv, descriptionEnv, scopedEnv }
+                                                         scopedEnv values are copied into the child but NOT
+                                                         exposed to the bootstrap model unless named in
+                                                         nameEnv/descriptionEnv
+  resumable                  false | object              false = tool-call style (default)
+                                                         object = long-lived addressable child; runtime
+                                                         exposes built-in subagent_create / subagent_message
+    receives_messages          'side_a' | 'side_b'       which side hears parent messages
+                                                         side_a = queued as 'user'
+                                                         side_b = queued as 'assistant'
+    maxInstances               number                    cap on concurrent instances; when reached the tool
+                                                         is hidden and new messages route to existing instances
+    parentCommunication        'implicit' | 'explicit'   implicit (default) auto-queues completion to parent
+                                                         explicit requires state.notifyParent() in code
+  initUserMessageProperty    schema field name           tool arg used as child's first user message
+  initAttachmentsProperty    schema field name           tool arg holding /attachments/* paths to copy to child
+  initAgentNameProperty      schema field name           tool arg used to tag the child thread (UI label)
+  optional                   string (env name)           subagent disabled unless this env resolves truthy
 ```
 
-## Receiving and sending input
+A second tool-config form exists for plain callables (`{ name, env, options }`), and a third for subprompts (`{ name, includeTextResponse, includeToolCalls, includeErrors, initUserMessageProperty, initAttachmentsProperty }`). Both are documented in full at `agents/prompts/AGENTS.md`.
 
-Within an agent graph, input can come directly via a user, a tool call, or even subagents. In its simplest form, you may have an ai+human agent at the top of the graph, although this works well in simple cases, it's often preferable to have the highest order agent be a high-level coordinator that uses a more intelligent discerning model and is guided by prompting to achieve high-level objectives (ex: "You are  project manager for the Jichael Mordan line of shoes at an athletic shoe company. You are in charge of...").
+### Inter-agent communication rules
 
-It is quite possible to have an entire agent graph with no `ai_human` agent types, where the only i/o with a human is through a subagent that performs tool calls to, for example, Slack. New messages are queued and posted by `side_b` as "Message from user: "Mow the lawn clanker", and responses would be sent via a tool call send_to_slack(channel, "I don't know how to do that"). However, for a chat-bot-like implementation it's often preferable to use `ai_human` as the top-level coordinator.
+These are correct as written in the spec — internalize them.
 
-## Inter-agent communication
+1. **Parents always create children.**
+   - Explicitly via the built-in `subagent_create` tool, which requires a non-empty `name` for the child instance.
+   - Implicitly via `immediate: { ... }` — the child spawns the moment the parent prompt activates, before any LLM step.
+2. **Children only communicate back to their parents.** Two flavors:
+   - **Implicit**: the child auto-queues a message to the parent when the session ends (via `sessionStop`, `sessionFail`, or `maxSessionTurns`). Default for all subagents.
+   - **Explicit**: only when `state.notifyParent()` is called. Set with `resumable.parentCommunication: 'explicit'`. Use for high-traffic resumables (e.g., a Slack monitor) where you want control over when the parent is interrupted.
+3. **Resumable subagents can receive messages from their parents.** `resumable.receives_messages` chooses which side hears them.
+4. **When a child sends back to the parent, it MUST indicate whether it needs a response** — in plain English, e.g. "After researching, you must respond so I can continue with the email." A research subagent providing FYI info doesn't need a response; a gmail subagent waiting on guidance does.
+5. **File attachments use path strings.** `/attachments/{filename}.{ext}`. Use this convention everywhere — the runtime copies attachments across thread filesystems automatically when listed in `initAttachmentsProperty`.
+6. **Resumable agents communicate via "silent" user messages** that carry the source instance UUID. The receiving agent decides whether to respond or just absorb the information.
+7. **Messages to busy agents are queued** and delivered when the agent is free.
+8. **Prompt language must distinguish `subagent_create` from `subagent_message`.** When writing prompts that include resumable subagents, explicitly tell the model: *"To research a new topic, use `subagent_create`. To follow up on a topic an existing instance is already researching, use `subagent_message`."* Without this guidance, models will pick wrong.
 
-A standard agent will often be communicating with many other agents. In almost every situation the agent graph is a tree, meaning each agent can have children, and can have parents. There are a few options that are important architectural decisions when creating these parent/child relationships. The shape of the options is this:
-
-```ts
-interface SubagentToolConfig<T extends string = StandardAgentSpec.Callables> {
-    /**
-     * Agent callable name.
-     *
-     * Must reference a `dual_ai` agent with `exposeAsTool: true`.
-     */
-    name: T;
-    /**
-     * Whether parent execution blocks until the subagent returns a result.
-     *
-     * - `true`: Parent waits for completion (tool-call style)
-     * - `false`: Parent continues immediately and receives results asynchronously
-     *
-     * @default true
-     */
-    blocking?: boolean;
-    /**
-     * Property from tool-call arguments used as the initial message sent to the
-     * subagent on invocation.
-     *
-     * Uses the same semantics as {@link SubpromptConfig.initUserMessageProperty}.
-     */
-    initUserMessageProperty?: StandardAgentSpec.SchemaFields<T>;
-    /**
-     * Property from tool-call arguments containing attachment path(s) that should
-     * be sent to the subagent on invocation.
-     *
-     * Uses the same semantics as {@link SubpromptConfig.initAttachmentsProperty}.
-     */
-    initAttachmentsProperty?: StandardAgentSpec.SchemaFields<T>;
-    /**
-     * Property from tool-call arguments used to assign a human-readable name for
-     * each spawned child thread instance.
-     *
-     * Implementations SHOULD store this as a thread tag in the form
-     * `name:<value>` so UIs can render a concise per-instance title.
-     */
-    initAgentNameProperty?: StandardAgentSpec.SchemaFields<T>;
-    /**
-     * Execute this tool immediately when the prompt becomes active.
-     *
-     * - `true`: Execute immediately using runtime defaults.
-     * - Object: Execute immediately with explicit per-instance env relationships.
-     *
-     * When the object form is used:
-     * - `scopedEnv` names the per-instance env values copied into the child thread.
-     * - `nameEnv` and `descriptionEnv` identify the only per-instance env values
-     *   that runtimes may expose to an internal bootstrap model when deriving
-     *   initial child arguments.
-     *
-     * Runtimes MUST NOT expose `scopedEnv` values to the model unless the same env
-     * name is explicitly designated by `nameEnv` or `descriptionEnv`.
-     *
-     * Immediate tools run before the first LLM step for that activation.
-     */
-    immediate?: boolean | {
-        /**
-         * Scoped env name whose value may be used as the safe per-instance name
-         * hint for child bootstrap.
-         */
-        nameEnv?: string;
-        /**
-         * Scoped env name whose value may be used as the safe per-instance
-         * description hint for child bootstrap.
-         */
-        descriptionEnv?: string;
-        /**
-         * Scoped env names that should be copied into the child thread for each
-         * immediate instance group.
-         */
-        scopedEnv?: string[];
-    };
-    /**
-     * Optional branch flag env name.
-     *
-     * When set, this subagent is only enabled when the named env resolves to
-     * `true`, `1`, or `yes` (case-insensitive).
-     */
-    optional?: string;
-    /**
-     * Resumability configuration.
-     *
-     * - `false` (default): Non-resumable subagent
-     * - Object: Resumable subagent with message routing and instance limits
-     *
-     * When resumable mode is enabled, runtimes SHOULD provide a built-in create
-     * and message lifecycle interface instead of exposing raw agent callables for
-     * new instance creation.
-     */
-    resumable?: false | {
-        /**
-         * Which side of the child `dual_ai` conversation receives parent messages.
-         *
-         * - `side_a`: Messages are queued as `role: 'user'`
-         * - `side_b`: Messages are queued as `role: 'assistant'`
-         */
-        receives_messages: 'side_a' | 'side_b';
-        /**
-         * Maximum concurrent instances for this subagent tool.
-         *
-         * When reached, implementations may remove this tool from subsequent LLM
-         * requests and route new messages to existing instances.
-         *
-         * @default unlimited
-         */
-        maxInstances?: number;
-        /**
-         * How this child reports back to its parent.
-         *
-         * - `implicit` (default): Child completion is automatically queued to the parent.
-         * - `explicit`: The runtime does not auto-queue child completion; tools/hooks may
-         *   use thread APIs such as `state.notifyParent()` when they choose to escalate.
-         */
-        parentCommunication?: 'implicit' | 'explicit';
-    };
-}
-```
-
-1. Parents always create children.
-  1. Parents explicitly create children by calling the tool `subagent_create`.
-  2. Parents implicitly create children by having a subagent tool call with `immediate: { ... }` which creates a child thread as soon as the parent thread is activated, without the parent having to explicitly call the tool.
-2. Children only communicate back to their parents:
-  1. Implicit communication: the child thread automatically queues a message to the parent thread when it ends a "session". A session ends, typically, when one side calls the tools assigned to `sessionStop` or `sessionFail` properties in the agent definition, or the `maxSessionTurns` is reached. All subagents communicate implicitly, unless they are resumable and have `resumable.parentCommunication` set to `explicit`.
-  2. Explicit communication: the child thread never communicates with the parent unless `state.notifyParent()` is called. Typically this is done in the tools that are given to the child thread. These calls are independent from session management. Subagents that receive a lot of inbound traffic, for example a Slack subagent, may want to use explicit communication to have more control over when the parent is notified and reduce noise.
-3. Resumable subagents can receive messages from their parents. Which side receives the message is indicated by the `resumable.receives_messages`.
-4. When sending messages back to the parent, subagents MUST indicate if they require the parent to provide a response or not (in plain english, for example "After researching you must provide a response back so I can continue with sending this email."). For example, a Gmail subagent may ask its parent for guidance on how to respond to an email regarding company policy, the coordinator may ask another subagent with expertise in legal matters and company policy for advice. The legal subagent does not need a response, it is just providing information, but the gmail subagent does require a response in order to proceed. Thus it is critical that the gmail subagent indicates to the parent that it needs a response in order to continue.
-5. File attachments are represented by simple strings. Anytime a file is added to a standard agent's filesystem by generation or upload it is given an explicit attachment "path" `/attachments/{filename}.{ext}`. This MUST be used anytime an agent is coordinating with subagents. The tool definition for a subagent can indicate an `initAttachmentsProperty`, which should be an array of strings — if these strings are valid attachments in the parent's file system, then those attachments will be copied into the subagent's file system and attached along with the `initUserMessageProperty` when the subagent is created (note: this also is true for sub-prompts).
-6. Resumable agents communicate from one agent to another via "silent" user messages. These messages indicate which agent instance they are from (via uuid) as well as the content of the message. The parent agent can then decide what to do with the message, whether to respond to it, or just use the information in the message to make a decision.
-7. If a message is sent to a parent agent or a sub agent that is currently busy, it will be queued and sent when the agent is free.
-8. When writing the language for prompts that include resumable subagents, ensure you clearly describe when the subagent should be created (assuming it's not immediate) via `subagent_create` vs when it should just be given a message via `subagent_message`. For example, if you have a research subagent that is researching a given topic, and another subagent needs additional information on that topic, just send a message back to the same resumable subagent, so its existing context can be useful. But if it's requesting information on a totally new topic, then perhaps it should use `subagent_create`.
-
-
-## Coordinators and the agent graph
-
-The coordinator pattern is akin to the actor model. It can work well when a number of related subagents need to work together. Coordinators provide two significant benefits:
-
-1. Provide subagent communication for similar domains. For example, a coding agent with a `research_agent` and a `bash_agent`. The coordinator could request the `research_agent` research a given operation. Once the `research_agent` completes its task, it communicates back to the coordinator. The coordinator, being satisfied with the results, can then instruct the `bash_agent` to run certain commands and provide the results. In this scenario, the bash subagent didn't even need to know the research subagent existed in order to benefit from it.
-2. Filtering. Imagine a `gmail_agent`. On its own it can probably do a pretty good job of filtering out spam. But the `gmail_agent` shouldn't be responsible for the higher-level objectives of an organization. A coordinator that sits above a `gmail_agent` could have directives for what kind of email really matters to the CEO of the sprinkler hose company and can further reduce clutter before it passes email results to it's parent.
-
-The agent graph is critical to get right. The deeper a graph, the more latency is introduced and the more chances for inter-agent communication to fail. However, deep graphs can also allow for better parallelization. A `marketing_communications_agent` may have a social media subagent: `social_media_agent` which may in turn have a `twitter_agent`, `linkedin_agent`, and `facebook_agent` as subagents. This subtree can perform many of its functions without ever even involving the top-level coordinator, allowing it additional flexibility.
+---
 
 ## Hooks
 
-Hooks are a powerful mechanism for extending the functionality of agents without having to modify their core logic. They can be used for a variety of purposes, such as logging, monitoring, modifying inputs/outputs, and more. Hooks are defined via `defineHook` and can be referenced in both agent and prompt definitions by their unique `id`.
-
-A common use for a hook is to truncate the conversation history, or inject artificial tool calls into the conversation. This can be useful, for example, to give a model awareness of the real time world clock, or to provide additional context without an explicit tool call. The following hooks are supported:
+Hooks extend agent behavior without modifying core logic. Defined via `defineHook`, referenced by `id` from agent or prompt definitions. Common uses: truncating history, injecting synthetic tool calls (e.g., real-time clock awareness), logging, and adapting tool results.
 
 | Hook | Execution Point | Purpose |
-|------|-----------------|---------|
-| filter_messages | Before LLM context assembly | Filter/transform message history |
-| prefilter_llm_history | After context assembly | Final adjustments before LLM request |
-| before_create_message | Before message insert | Transform message before storage |
-| after_create_message | After message insert | Side effects after storage |
-| before_update_message | Before message update | Transform update data |
-| after_update_message | After message update | Side effects after update |
-| before_store_tool_result | Before tool result storage | Transform tool results |
-| after_tool_call_success | After successful tool call | Post-process success results |
-| after_tool_call_failure | After failed tool call | Handle/recover from errors |
+|---|---|---|
+| `after_thread_created` | After thread creation, before execution | Initialize thread state |
+| `after_subagent_created` | On parent after child thread creation | Track or initialize child relationships |
+| `after_system_message` | After system message render | Transform dynamic system instructions |
+| `filter_messages` | Before LLM context assembly | Filter/transform message history |
+| `prefilter_llm_history` | After context assembly | Final adjustments before LLM request |
+| `before_create_message` | Before message insert | Transform message before storage |
+| `after_create_message` | After message insert | Side effects after storage |
+| `before_update_message` | Before message update | Transform update data |
+| `after_update_message` | After message update | Side effects after update |
+| `before_store_tool_result` | Before tool result storage | Transform tool results |
+| `after_tool_call_success` | After successful tool call | Post-process success results |
+| `after_tool_call_failure` | After failed tool call | Handle/recover from errors |
 
-Note: Do be careful when applying hooks to ensure matching tool calls and results are not separated or truncated off as this can lead to errors in many models.
+> **Caution:** Hooks that filter or truncate messages must keep matching tool calls and tool results together. Separating them produces hard-to-debug failures in many models.
 
-## Variables and Environment
+## Variables and environment
 
-Variables allow tools, prompts, and agents to specify dynamic content they require to function properly. For example a `weather_agent` may have a variable `LOCATION` that it needs in order to provide accurate weather information. Variables can be one of two types: `text` or `secret`. Text variables are simple strings that can be used for any purpose. Secret variables are encrypted and MUST only be used in tools to prevent exposing them to a model. For example, an `GMAIL_API_KEY` variable should be of type `secret` and only used in a tool that makes API calls, it should never be included in a prompt or exposed to the model in any way.
-
-When creating a new thread, all required variables used within the agent graph must be provided. Variables can have their values provided by prompts, tools, or threads. An instance of a variable is called an "environment variable" or `env` whereas the definition of the variable is just called a variable.
-
-## ThreadState
-
-The `ThreadState` object is a powerful tool that is passed to all callables, hooks, and endpoints. It provides access to the current thread's context, including its messages, tools, variables, filesystem, and more. To increase portability, callable tools should only use the `ThreadState` APIs for interacting with the execution environment. For example, rather than using `node:fs` to read files, use `state.readFile()` which will work regardless of the underlying runtime environment.
+Variables let tools, prompts, and agents declare dynamic values they need. Declare them on prompts, tools, and agents with `variables`:
 
 ```ts
-/**
- * Thread state interface - the unified API for thread interactions.
- * Available to tools, hooks, and endpoints.
- */
-interface ThreadState {
-  // ─────────────────────────────────────────────────────────────────────────
-  // Identity (readonly)
-  // ─────────────────────────────────────────────────────────────────────────
-  readonly threadId: string;
-  readonly agentId: string;
-  readonly userId: string | null;
-  readonly createdAt: number;
-  readonly children: SubagentRegistryEntry[];
-  readonly terminated: number | null;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Messages
-  // ─────────────────────────────────────────────────────────────────────────
-  getMessages(options?: GetMessagesOptions): Promise<MessagesResult>;
-  getMessage(messageId: string): Promise<Message | null>;
-  injectMessage(input: InjectMessageInput): Promise<Message>;
-  queueMessage(input: QueueMessageInput): Promise<void>;
-  updateMessage(messageId: string, updates: MessageUpdates): Promise<Message>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Logs
-  // ─────────────────────────────────────────────────────────────────────────
-  getLogs(options?: GetLogsOptions): Promise<Log[]>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Resource Loading
-  // ─────────────────────────────────────────────────────────────────────────
-  loadModel<T = unknown>(name: string): Promise<T>;
-  loadPrompt<T = unknown>(name: string): Promise<T>;
-  loadAgent<T = unknown>(name: string): Promise<T>;
-  getChildThread(referenceId: string): Promise<ThreadState | null>;
-  getParentThread(): Promise<ThreadState | null>;
-  getPromptNames(): string[];
-  getAgentNames(): string[];
-  getModelNames(): string[];
-  env(propertyName: string): Promise<string>;
-  setEnv(propertyName: string, value: string): Promise<void>;
-  notifyParent(content: string): Promise<void>;
-  setStatus(status: string): Promise<void>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Tool Invocation
-  // ─────────────────────────────────────────────────────────────────────────
-  queueTool(toolName: string, args: Record<string, unknown>): void;
-  invokeTool(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Effect Scheduling
-  // ─────────────────────────────────────────────────────────────────────────
-  scheduleEffect(name: string, args: Record<string, unknown>, delay?: number): Promise<string>;
-  getScheduledEffects(name?: string): Promise<ScheduledEffect[]>;
-  removeScheduledEffect(id: string): Promise<boolean>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Events
-  // ─────────────────────────────────────────────────────────────────────────
-  emit(event: string, data: unknown): void;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Context Storage
-  // ─────────────────────────────────────────────────────────────────────────
-  context: Record<string, unknown>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // File System
-  // ─────────────────────────────────────────────────────────────────────────
-  writeFile(path: string, data: ArrayBuffer | string, mimeType: string, options?: WriteFileOptions): Promise<FileRecord>;
-  readFile(path: string): Promise<ArrayBuffer | null>;
-  readFileStream(path: string, options?: ReadFileStreamOptions): Promise<AsyncIterable<FileChunk> | null>;
-  statFile(path: string): Promise<FileRecord | null>;
-  readdirFile(path: string): Promise<ReaddirResult>;
-  unlinkFile(path: string): Promise<void>;
-  mkdirFile(path: string): Promise<FileRecord>;
-  rmdirFile(path: string): Promise<void>;
-  getFileStats(): Promise<FileStats>;
-  grepFiles(pattern: string): Promise<GrepResult[]>;
-  findFiles(pattern: string): Promise<FindResult>;
-  getFileThumbnail(path: string): Promise<ArrayBuffer | null>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Execution State
-  // ─────────────────────────────────────────────────────────────────────────
-  execution: ExecutionState | null;
-  terminate(): Promise<void>;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Runtime Context (Non-Portable)
-  // ─────────────────────────────────────────────────────────────────────────
-  readonly _notPackableRuntimeContext?: Record<string, unknown>;
-}
+variables: [
+  {
+    name: 'LOCATION',
+    type: 'text',
+    required: true,
+    description: 'City or ZIP code to use for weather lookups.',
+  },
+  {
+    name: 'WEATHER_API_KEY',
+    type: 'secret',
+    required: true,
+    description: 'Weather API credential used only inside tools.',
+  },
+];
 ```
 
+Two value types are supported:
 
-## Further reading
+- **`text`** — simple string. Safe to render in prompts.
+- **`secret`** — encrypted; **MUST only be used inside tools**. Never reference a secret in prompt text and never return it to the model. A `GMAIL_API_KEY` is `secret`; a `LOCATION` is `text`.
 
-To get an even more detailed understanding of how to create agents, read the following:
+When a thread is created, all required variables in the agent graph must be provided. The instance of a variable on a thread is called an "environment variable" or `env`. Resolution precedence (low → high): prompt → tool → agent → thread.
 
-Specification Docummentation: https://standardagentspec.org/llms.txt
-Agent Builder Documentation: https://docs.standardagentbuilder.com/llms.txt
+Scoped variables (`scoped: true`) do not inherit from parent thread env — they reset for the declaring agent's subtree. Use this when a subagent must run with different config from its parent (e.g., a per-instance Slack channel ID).
 
+Thread env values are editable from the thread metadata UI. `ThreadState.setEnv(name, "")` intentionally creates a blank thread env entry that still appears in that UI. Prefer the explicit form when writing new values:
+
+```ts
+await state.setEnv('LOCATION', 'Charlottesville, VA', { type: 'text' });
+await state.setEnv('WEATHER_API_KEY', token, { type: 'secret' });
+```
+
+In code, read values through `await state.env('NAME')`, check display policy with `await state.envType('NAME')`, and write thread-scoped values with `await state.setEnv('NAME', value, { type: 'text' | 'secret' })`. Use `text` only for values that are safe in prompts, tool output, logs, and errors. Use `secret` for tokens, API keys, credentials, and anything that should be redacted.
+
+Undeclared thread-only env keys are treated as write-only secrets when scanned for the UI, so the key is visible and editable but arbitrary stored values are not echoed back.
+
+---
 
 ## Implementation checking
 
-When you edit `agents/`, `prompts/`, `models/`, `tools/`, `hooks/`, or `worker/`,
-  validate before claiming the change is done.
+When you edit `agents/`, `prompts/`, `models/`, `tools/`, `hooks/`, or `worker/`, validate before claiming the change is done.
 
-  Validation order:
-  1. Read `package.json` and prefer project scripts if they exist.
-  2. Refresh Cloudflare types:
-     - use `pnpm cf-typegen` if that script exists
-     - otherwise run `npx wrangler types`
-  3. Regenerate AgentBuilder types by running the project's build command:
-     - usually `pnpm build`, `npm run build`, `pnpm run dev` or equivalent
-  4. Run the project's type checker:
-     - prefer `pnpm type-check` / `npm run type-check` if present
-     - otherwise use the installed checker directly, such as `pnpm exec vue-tsc --build`, `pnpm exec tsc -b`, or `pnpm exec tsc --noEmit`
-  5. If any validation step cannot run, state exactly what is missing.
+Validation order:
+
+1. Read `package.json` and prefer project scripts if they exist.
+2. Refresh Cloudflare types:
+   - use `pnpm cf-typegen` if that script exists
+   - otherwise run `npx wrangler types`
+3. Regenerate AgentBuilder types by running the project's build command:
+   - usually `pnpm build`, `npm run build`, `pnpm run dev`, or equivalent
+4. Run the project's type checker:
+   - prefer `pnpm type-check` / `npm run type-check` if present
+   - otherwise use the installed checker directly: `pnpm exec vue-tsc --build`, `pnpm exec tsc -b`, or `pnpm exec tsc --noEmit`
+5. If any validation step cannot run, state exactly what is missing.

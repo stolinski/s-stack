@@ -394,6 +394,85 @@ Each transform includes:
 
 ---
 
+## RT-012: Neutral Wrapper to Role Primitive (anti-generic-container)
+
+### Trigger
+
+- Content with a clear role (KPI, feature blurb, notice, chat turn, log entry, multi-line composer, in-page TOC, vertical icon nav, inspector pane, etc.) is wrapped in `.box`, `.stack`, `.cluster`, `.split`, or `.surface`.
+
+### Rewrite steps
+
+1. Identify the content role using the matrix in `COMPONENT_INTENT_MATRIX.md` or the role table in `CHEAT_SHEET.md`.
+2. Replace the neutral wrapper with the role-bearing primitive.
+3. Move inline padding/radius/shadow declarations onto the role primitive's own override tokens, or drop them if the primitive provides them.
+4. If multiple sibling wrappers share the role, repeat for each — consistency across siblings matters.
+
+### Before
+
+```html
+<div class="box stack" style="--gap: var(--vs-xs);">
+  <small>Active Users</small>
+  <strong>2,420</strong>
+  <span class="tag success">+8.1%</span>
+</div>
+```
+
+### After
+
+```html
+<article class="stat-card">
+  <small>Active Users</small>
+  <strong>2,420</strong>
+  <span class="tag success">+8.1%</span>
+</article>
+```
+
+### Verification
+
+- Specific-over-generic check passes (no role-bearing content wrapped in neutral primitives).
+- Inline spacing declarations removed where the role primitive supplies them.
+
+---
+
+## RT-013: Inline Hue Override → Theme Class
+
+### Trigger
+
+- Markup inline-overrides a hue token (`--blue`, `--red`, `--green`, etc.) and expects nested components to pick up matching opaque scales (`--blue-opaque-N`).
+- Markup overrides `--bg` or `--fg` inline without pinning `color-scheme` on the same element.
+- Multiple inline token overrides (10+) on a single element.
+
+### Rewrite steps
+
+1. Decide the scope of change: whole app/site (theme on `<html>`), one feature (theme on section root), or accent-only (`--primary` inline).
+2. If theming is the answer, apply a `theme-*` class instead — that re-derives every opaque scale at that scope.
+3. If the project lacks a matching stock theme, write a minimal project theme by copying `editorial.css` or `system.css` as a starting point and registering it in `src/lib/themes/index.css`.
+4. Remove the inline hue / `--bg` / `--fg` overrides once the theme class is in place.
+
+### Before
+
+```html
+<section style="--blue: oklch(0.55 0.22 305); --bg: #fafafa; --fg: #1a1a1a;">
+  <div class="bubble" style="--bubble-bg: var(--blue-opaque-1);">…</div>
+</section>
+```
+
+### After
+
+```html
+<section class="theme-studio">
+  <div class="bubble">…</div>
+</section>
+```
+
+### Verification
+
+- No inline hue / `--bg` / `--fg` overrides remain in markup.
+- Opaque scales render correctly because they were re-derived by the theme block.
+- Theming commitment in the output contract names exactly one scope (global / local / `--primary` only / no theme).
+
+---
+
 ## Transform Application Order
 
 Apply transforms in this order for deterministic cleanup:
@@ -404,9 +483,11 @@ Apply transforms in this order for deterministic cleanup:
 4. RT-002 spacing cleanup
 5. RT-003 semantic colors
 6. RT-006 canonical component substitution
-7. RT-011 component intent remap
-8. RT-008 shell viewport fix
-9. RT-009 token dump reduction
-10. RT-010 native interaction replacement
+7. RT-011 component intent remap (role-mismatched class → correct or neutral)
+8. RT-012 neutral wrapper to role primitive (anti-generic-container)
+9. RT-013 inline hue override to theme class
+10. RT-008 shell viewport fix
+11. RT-009 token dump reduction
+12. RT-010 native interaction replacement
 
 Then run the full verification checklist from `OUTPUT_CONTRACT.md`.

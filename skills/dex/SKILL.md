@@ -20,10 +20,13 @@ bun add -g @zeeg/dex
 ## Core Concepts
 
 - **Persistence**: Tasks survive beyond the current session as `.dex/` files in the repo
+- **Repository-local storage**: Before planning inside a project, run `dex dir`. If it points at global storage such as `~/.config/dex/local`, the current directory is not being treated as a repo-local Dex workspace. Initialize or enter the project repo, ensure `.dex/` exists if needed, then re-run `dex dir` before creating backlog items.
 - **Context Preservation**: Decisions, progress, and rationale are captured
 - **Hierarchy**: 3-level structure (Epic → Task → Subtask)
-- **Dependencies**: Tasks can block other tasks
+- **Configuration**: Tasks can block other tasks
 - **GitHub/Shortcut Sync**: Optional sync to Issues/Stories for permanent records
+
+Related reference: `references/content-audit-and-devtools-gates.md` covers content-completeness audit scripts plus Chrome DevTools MCP verification gates for content-model epics.
 
 ## Core Commands
 
@@ -120,7 +123,31 @@ dex export <task_id>            # Export to GitHub without sync
 
 ## Workflow for Agents
 
+### Repository-local storage check
+
+Before creating a project backlog, verify Dex is using repository-local storage:
+
+```bash
+dex dir
+```
+
+Expected for a project backlog: `<repo>/.dex`. If it resolves to a global path (for example `~/.config/dex/local`), make the project a git repo first:
+
+```bash
+git init
+mkdir -p .dex
+dex dir
+```
+
+Dex may have a global config already, so `dex init -y` can fail with "Config file already exists"; that is not the fix. The durable fix is ensuring the project is a git repo so Dex scopes storage locally. Keep `.dex/` project-local for epics/task lists that belong to the repo.
+
 ### Starting New Work
+
+0. Verify storage scope before creating anything:
+```bash
+dex dir
+```
+If it prints a global path (for example `~/.config/dex/local`) while you are planning project work, stop and fix the workspace first: enter the correct repo or initialize git for the project, create `.dex/` if needed, then re-run `dex dir` until it points inside the project. Do not create project epics in global Dex by accident.
 
 1. Create task with full context:
 ```bash
@@ -181,6 +208,7 @@ Include:
 - **Why** it's needed (background, motivation)
 - **How** to approach it (files to modify, patterns to follow)
 - **Done when** (acceptance criteria)
+- **Verification gates** for risky/big-bang work: content audits, build/check commands, and browser verification steps. If Chrome DevTools MCP is available, name the exact flows it must verify rather than leaving “browser tested” vague.
 
 **Good:**
 > "Add rate limiting to /api/auth endpoints. Use express-rate-limit, 5 requests per minute per IP for /login, 20/min for /refresh. Return 429 with Retry-After header. Add to src/middleware/rate-limit.ts, apply in src/routes/auth.ts."
@@ -195,8 +223,13 @@ Include:
 - **Key decisions** (and why)
 - **Verification** (tests passing, manual testing done)
 
+For browser-app implementation tasks, especially Scott's SvelteKit projects, record concrete Chrome DevTools MCP evidence in the Dex completion result. Do not write generic "browser tested". Name the route/page, the clicked flow, observed state changes, console result, and screenshot path if layout/highlighting was visually checked. See `references/devtools-mcp-verification.md`.
+
 **Good:**
 > "Added rate limiting with express-rate-limit. Login: 5/min, refresh: 20/min. Returns 429 with Retry-After header. Added 6 tests for rate limit scenarios. All 30 tests passing."
+
+**Good browser-task result:**
+> "npm run check passed; npm run build passed; Chrome DevTools MCP verified /op-xy loads, selecting Move 5 updates Touch Now, completing all Moves reaches 100%, console has no runtime errors, screenshot saved at /tmp/flow.png."
 
 **Bad:**
 > "Added rate limiting"
@@ -219,15 +252,30 @@ Maximum depth is 3 levels.
 ## Configuration
 
 ```bash
-dex init                        # Interactive setup
-dex init -y                     # Accept defaults
-dex dir                         # Print task storage path
+dex init                        # Interactive setup for global config (~/.config/dex/dex.toml)
+dex init -y                     # Accept defaults; fails harmlessly if global config already exists
+dex dir                         # Print task storage path; ALWAYS verify this before creating project tasks
 dex dir --global                # Print global config path
 dex config --list               # Show all config values
 dex config sync.github.enabled=true  # Enable GitHub sync
 dex doctor                      # Check for issues
 dex doctor --fix                # Check and fix issues
 ```
+
+### Repo-local storage guardrail
+
+For project planning, prefer repo-local Dex storage so tasks live with the project instead of the global store.
+
+Before creating an epic/task list:
+
+```bash
+# from the project root
+git rev-parse --is-inside-work-tree || git init
+mkdir -p .dex
+dex dir
+```
+
+Proceed only after `dex dir` prints `<project>/.dex`. If it prints something under `~/.config/dex/local`, the current directory is not being treated as the project store yet — initialize/enter the git repo and re-check. This matters for Scott: project Dex planning should be local, not global.
 
 ## Session Handoff
 

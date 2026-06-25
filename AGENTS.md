@@ -5,8 +5,10 @@
 ### UI & Frontend Code & HTML
 
 - Use the simplest, flattest HTML structure that communicates the content — don't add wrapper elements or semantic tags unless they provide real value.
-- keep html semantic and minimal
+- keep html semantic, minimal and modern
 - less ui is always better than too much
+- no unessary labels or boxes within boxes
+- don't add gradients to design unless it's specified as part of a project's design spec
 - Don't give the user "refresh" buttons, data should always be fresh
 - Don't give the user "save" buttons, forms should auto save on data change (never via a setInterval)
 - Don't add text to explain the ui, ie don't put text explaining to the user what to do, the correct path should be obvious by the ui itself.
@@ -135,17 +137,4 @@
 
 - CSS should be systemic avoiding one off styles in routes unless absolutely needed.
 - CSS customization should be done at a global level via an imported css file OR scoped to a component.
-- CSS should be https://graffiti-ui.com/ first. using graffiti patterns and classes before reaching for custom css.
-
-### @drop-in/graffiti
-
-When using @drop-in/graffiti follow these rules
-
-- Graffiti is the base styling system in this repo: tokens/vars, layout primitives, utilities, and component patterns.
-- Use Graffiti tokens first (not tokens-only). Before adding any new token/variable, verify an equivalent Graffiti token does not already exist.
-- No custom theme/aesthetic layer unless explicitly requested.
-- In this repo, no visual treatment unless explicitly requested.
-- Structural CSS first: layout/spacing/sizing/overflow for behavior is allowed; decorative gradients/tints/shadows/motion are not default.
-- Do not re-implement Graffiti built-ins when equivalent patterns exist (dialog/modal, card, bubble, button, tag/chip patterns).
 - Never add a "button" class to a `<button>` element.
-- Any new custom class or token must include a one-line justification in the final report.

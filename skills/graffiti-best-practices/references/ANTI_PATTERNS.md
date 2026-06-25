@@ -382,3 +382,87 @@ Disallowed even as exceptions:
 - Validate every role-specific class with `COMPONENT_INTENT_MATRIX.md`
 - Use neutral wrappers (`box`, `surface`, `layout-*`, `stack`, `cluster`, `split`) for generic containers
 - Keep `.card*` for record-like content units, `.stat-card` for metrics, `.feature-card` for feature-list items
+
+---
+
+## AP-014: Neutral-Wrapper Default (Box/Stack Reflex)
+
+### Detection heuristics
+
+- Page is heavy on `.box`, `.stack`, `.cluster`, `.split`, `.surface` wrappers
+- A KPI metric is rendered with `<div class="box">…</div>` instead of `.stat-card`
+- A feature blurb is rendered with `<div class="stack">…</div>` instead of `.feature-card`
+- A notice is rendered with `<div class="box">…</div>` instead of `.callout`
+- A chat turn is rendered with `<div class="stack">…</div>` instead of `.chat-row` + `.bubble`
+- A tool call / activity entry is rendered with `<article class="card">` or `.box` instead of `.log-card`
+- A multi-line input + send button is hand-built instead of `<form class="composer">`
+- A right-side inspector is built from raw `<aside class="surface">` instead of `.workbench-panel`
+- A narrow vertical icon nav is built from `.stack` instead of `.icon-rail`
+
+### Why this is problematic
+
+- Output looks generic and unstyled — neutral wrappers do not carry the role-specific shape, padding, and theme hooks that role primitives do.
+- Other agents read the output, learn the bad pattern, and propagate it.
+- Defeats the entire point of having role primitives — Graffiti's value is in named, themed, role-bearing components.
+- Single largest source of "this looks ugly / generic / AI-shaped" complaints about Graffiti output.
+
+### Typical bad pattern
+
+```html
+<div class="layout-card" style="--min-card-width: 220px;">
+  <div class="box stack" style="--gap: var(--vs-xs);">
+    <small>Total Revenue</small>
+    <strong>$48,250</strong>
+    <span class="tag success">+12.5%</span>
+  </div>
+  <div class="box stack" style="--gap: var(--vs-xs);">
+    <small>Active Users</small>
+    <strong>2,420</strong>
+    <span class="tag success">+8.1%</span>
+  </div>
+</div>
+```
+
+### Preferred direction
+
+```html
+<div class="layout-card" style="--min-card-width: 220px;">
+  <article class="stat-card">
+    <small>Total Revenue</small>
+    <strong>$48,250</strong>
+    <span class="tag success">+12.5%</span>
+  </article>
+  <article class="stat-card">
+    <small>Active Users</small>
+    <strong>2,420</strong>
+    <span class="tag success">+8.1%</span>
+  </article>
+</div>
+```
+
+Apply the role-first decision tree in `CHEAT_SHEET.md` and `COMPONENT_INTENT_MATRIX.md` before reaching for any neutral wrapper.
+
+---
+
+## AP-015: Icon-Library Recommendation Outside Project Context
+
+### Detection heuristics
+
+- Markup or commentary names a specific icon library (Lucide, Heroicons, Phosphor, Material, Tabler, etc.) without checking what the project already imports
+- Output includes a third-party icon CDN URL (`<script src="https://...">`, `<link>` to an icon font, inline `<img src="https://unpkg.com/...">`)
+- Emoji used as feature/section icons in non-brand contexts
+- Hand-drawn SVG icons more complex than a basic shape (circle, square, arrow, chevron, plus, minus, X, check)
+
+### Why this is problematic
+
+- Graffiti deliberately ships no icon set and blesses none — recommending one biases users toward a choice they didn't make
+- Mixing icon sets within a project (because each agent picks a different default) produces visually inconsistent UIs
+- Pulling in a third-party icon CDN is a runtime decision that belongs in project setup, not in generated markup
+- Hand-drawn SVGs read as AI-shaped slop
+
+### Preferred direction
+
+1. Check `package.json` and existing imports for an already-adopted icon library; use that one.
+2. If none exists, use `<span class="icon" aria-hidden="true">` with a placeholder Unicode glyph until the user supplies a real source.
+3. Never include a third-party icon CDN reference in output unless explicitly requested.
+4. Never invent SVG icons more complex than a basic shape.

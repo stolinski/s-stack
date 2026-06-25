@@ -6,6 +6,20 @@ Core rule: component classes are role-bearing primitives, not generic wrappers.
 
 If a class does not match the requested job, do not use it even if it looks visually close.
 
+## The Specific-Over-Generic Rule (read this first)
+
+`.box`, `.stack`, `.cluster`, `.split`, `.surface` are **fallbacks for content with no specific role**. They are not the default container shape. Defaulting to them when a role primitive exists is the single most common reason AI-generated Graffiti pages look generic.
+
+Before composing any container with a neutral wrapper, answer **one** question: *what is the content's role?* Then pick the matching primitive from the matrix below. Only when no role applies do you fall back to neutral wrappers.
+
+A symptom checklist that means you skipped the role question:
+
+- The page is mostly `<div class="box">` and `<div class="stack">` repeated.
+- Two visually-similar surfaces use neutral wrappers despite carrying different content roles (e.g. metrics styled like marketing blurbs).
+- A chat / form / log / metric surface was built from raw boxes instead of its dedicated primitive.
+
+If any of those are true, go back and reselect using the matrix.
+
 ## How to Apply
 
 For every role-specific class in output:
@@ -13,7 +27,7 @@ For every role-specific class in output:
 1. Confirm the requested intent matches the class role.
 2. Confirm semantic host element fits the pattern.
 3. Confirm content shape fits (metric, article preview, form row, notice, message, etc.).
-4. If any check fails, remap to a neutral layout/surface primitive.
+4. If any check fails, remap — first to the correct role primitive, only then to a neutral wrapper.
 
 ## Matrix
 
@@ -30,16 +44,33 @@ For every role-specific class in output:
 | `.form-actions`                          | Submit/cancel action row at form end with responsive stacking behavior                         | `<div class="form-actions">`                              | Header toolbars, card CTA rows not tied to form submission                | `cluster`, `split`                                         |
 | `.input-group`                           | Single input coupled with appended button/control (search, invite, subscribe)                  | `<div class="input-group">`                               | Full multi-field forms, unrelated controls in one row                     | `row`, `stack`, `cluster`                                  |
 | `.chat-thread` + `.chat-row` + `.bubble` | Sequential chat conversation transcript (assistant/user messages)                              | `<section class="chat-thread">` with `.chat-row` children | Generic comments/feed list, notices, FAQ accordions                       | `stack`, `card`, `callout`, semantic list/article patterns |
+| `.composer`                              | Multi-line message composer with a toolbar (chat input, comment box, AI prompt)                | `<form class="composer">` with `> textarea` and `> .toolbar` | Generic form wrapper, single-line newsletter input, settings form     | `input-group` for single-line; `<form>` for general forms  |
+| `.log-card`                              | Compact activity entry — tool call, deploy line, audit log, function invocation                | `.log-card` with `.label` (mono) + optional `<pre>` body  | Article previews, marketing blurbs, KPI summaries                         | `card`, `feature-card`, `stat-card`                        |
+| `.icon-rail`                             | Narrow vertical icon-only nav rail (left edge of an app shell)                                 | `<aside class="icon-rail">` inside `.layout-rail`         | Horizontal toolbars, sidebar nav with labels, breadcrumb strips           | `sidebar-nav`, `cluster`, `nav`                            |
+| `.workbench-panel`                       | Secondary inspector / right-side pane in an app shell (artifact view, settings inspector)      | `<aside class="workbench-panel">` inside `.layout-rail.with-workbench` | Generic right column, standalone card, modal content              | `aside`, `card`, `surface`                                 |
 | `.toc`                                   | On-page heading index for a long document                                                      | `<nav class="toc" aria-label="Table of contents">`        | Primary site navigation, sidebar app menus                                | `nav`, `sidebar-nav`                                       |
 | `.table` (wrapper)                       | Real tabular datasets needing native table semantics and overflow handling                     | `<div class="table"><table>...`                           | Card grids, marketing layouts, non-tabular content                        | `layout-card`, `layout-three-col`, `stack`                 |
 
-## Neutral Wrapper Defaults
+## Neutral Wrappers — Last Resort, Not Default
 
-When the user asks for "a container/wrapper/section" without a clear component role, default to neutral composition:
+Neutral wrappers exist for content that genuinely has no role beyond grouping. They are **not** the default container shape and **not** an acceptable substitute for skipping the role question.
 
-- Layout: `layout-*`, `stack`, `cluster`, `split`
-- Surface wrappers: `box`, `surface`
-- Semantic structure: `section`, `article`, `aside`, `header`, `footer` (without forcing component classes)
+Acceptable use:
+
+- Layout: `layout-*`, `stack`, `cluster`, `split` for **arrangement of role primitives** (e.g. a `.cluster` of `.tag`s, a `.layout-card` of `.stat-card`s).
+- Surface wrappers: `box`, `surface` for **page-shell padding and background alternation** with no semantic content unit inside.
+- Semantic structure: `section`, `article`, `aside`, `header`, `footer` (without forcing component classes).
+
+Unacceptable use (re-do with a role primitive):
+
+- A "container" wrapping a single metric → `.stat-card`.
+- A "container" wrapping a feature blurb → `.feature-card`.
+- A "container" holding a notice → `.callout`.
+- A "container" holding a chat turn → `.chat-row` + `.bubble`.
+- A "container" holding a tool call entry → `.log-card`.
+- A "wrapper" around a multi-line input + submit → `.composer` (or `.input-group` for single-line).
+
+If the user's request literally is "wrap this in a container," ask what role the contained content plays before picking a class.
 
 ## Card-Specific Guardrails
 

@@ -51,8 +51,7 @@ Every response must include these sections in this order:
    - Must include token, utility, and component duplication checks.
 
 10. **Known Limitations and Adaptation Path**
-
-- If any requirement could not be met with current classes, list limitation + fallback used.
+    - If any requirement could not be met with current classes, list limitation + fallback used.
 
 ## 2) Markup Rules
 
@@ -146,6 +145,9 @@ Any hard fail means overall fail regardless of score:
 7. Missing one or more mandatory response sections from section 1
 8. Fails to use a matching hosted template baseline when one exists (unless user explicitly requested a fresh build)
 9. Uses role-specific component classes outside intent boundaries from `COMPONENT_INTENT_MATRIX.md`
+10. Uses a neutral wrapper (`.box`, `.stack`, `.cluster`, `.split`, `.surface`) for content that has a clear role primitive (KPI → `.stat-card`, feature blurb → `.feature-card`, notice → `.callout`, chat turn → `.chat-row`+`.bubble`, log entry → `.log-card`, multi-line composer → `.composer`, etc.) without an explicit "no role primitive fits because…" justification.
+11. References or wires up a specific icon library (Lucide, Heroicons, Phosphor, Material, etc.) when the project hasn't already adopted it.
+12. Theming scope was not committed before writing markup (no answer to: global theme on `<html>` / local theme on section / `--primary` swap / no theme).
 
 ## 7) Verification Checklist Template
 
@@ -161,6 +163,9 @@ Use this exact checklist format in responses:
 - Responsive composition: PASS/FAIL (mobile + desktop layout behavior)
 - Graffiti fidelity: PASS/FAIL (matches canonical composition patterns)
 - Component intent fit: PASS/FAIL (role mismatches: N)
+- Specific-over-generic check: PASS/FAIL (count of `.box`/`.stack`/`.cluster`/`.split`/`.surface` wrappers: N; justify each one that wraps content with a known role)
+- Theming commitment: PASS/FAIL (scope chosen: global theme on `<html>` / local theme on section / `--primary` swap / no theme. Single answer expected.)
+- Icon policy: PASS/FAIL (icon source: project library `<name>` / placeholder pattern / none needed. No invented SVGs. No emoji as feature icons.)
 - Overall score: N/100 (PASS >= 85)
 
 ## 8) Post-Edit Compliance Report Template

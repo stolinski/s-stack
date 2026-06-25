@@ -37,6 +37,22 @@ Do not use this skill for:
 
 ## Design Rules
 
+### Physical-device / practice-workspace screens
+
+For apps that teach or operate a physical device, make the device and the current action the center of gravity. Do not spend repeated above-the-fold space on marketing-style headers, redundant page labels, technique tags, mission descriptions, or curriculum/reference metadata once the user is inside the workspace. The working surface should answer: what am I touching, what do I do now, how do I advance?
+
+Be ruthless about UI that exists only because data exists. “Reference”, “goal/techniques/excerpts”, control chips duplicated by a device highlight, source pills, story prose, registry cards, and section labels are all suspect on practice pages. Delete them unless they directly help the current physical action or recovery from confusion. If reference material is genuinely useful, hide it behind an intentional route/action outside the default practice viewport, not an always-visible receipt at the bottom of every page.
+
+Keep the primary viewport focused on what to touch now, the current step, direct navigation, and feedback. Dense is fine; dead space and boxes-inside-boxes are not. Flatten nested cards before styling them.
+
+Pitfall: bookmarkable routes often accidentally turn every deep-linked app screen into a landing page. Root routes can keep hero/marketing treatment; device/mission routes should be workspace-first.ys-visible receipt at the bottom of every page.
+
+Keep the primary viewport focused on what to touch now, the current step, direct navigation, and feedback. Dense is fine; dead space and boxes-inside-boxes are not. Flatten nested cards before styling them.
+
+Pitfall: bookmarkable routes often accidentally turn every deep-linked app screen into a landing page. Root routes can keep hero/marketing treatment; device/mission routes should be workspace-first.
+
+Reference: `references/device-first-practice-screens.md` includes a deletion-pass checklist and an OP-XY workbench case study.
+
 ### 1. Clarity Over Explanation
 - Make layout, grouping, and affordances carry the meaning
 - Use text to confirm meaning, not create it
@@ -109,6 +125,12 @@ Do not use this skill for:
   - visible priority
 - Dense is acceptable if it remains understandable
 
+### 13. Practice Screens Are Not Marketing Pages
+- On app/workspace routes, remove hero blocks, repeated product labels, taxonomy chips, and descriptive copy that do not directly support the current action.
+- Keep marketing/landing framing on the root or entry page; once the user is practicing, spend pixels on the object of work, current action, and feedback.
+- If navigation already establishes context, do not repeat it in a large header. Prefer a compact status strip: title, progress, and essential controls.
+- Move reference/detail/metadata below or behind disclosure when it supports action but is not needed for the current move.
+
 ## Review Process
 
 When designing or evaluating a UI:
@@ -117,6 +139,7 @@ When designing or evaluating a UI:
 3. Fix layout, grouping, defaults, and constraints before adding copy
 4. Keep any necessary explanation inline and brief
 5. Delete anything that does not directly enable action
+6. For physical-device/practice-first screens, apply the device-first hierarchy in `references/device-first-practice-screens.md`
 
 ## Anti-Patterns
 
