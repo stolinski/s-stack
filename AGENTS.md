@@ -13,9 +13,8 @@
 - Don't give the user "save" buttons, forms should auto save on data change (never via a setInterval)
 - Don't add text to explain the ui, ie don't put text explaining to the user what to do, the correct path should be obvious by the ui itself.
 
-### Entire Codebase Rules
+### Codebase Rules
 
-- Never write a utility function in a context of where it's used. Always put it in the appropriate utils folder and import it.
 - Never leave TODOs, placeholder implementations, or no-op stubs. If something needs to work, wire it now. If you can't wire it yet, the task isn't done — don't close it.
 
 ## Code style guidelines
@@ -24,8 +23,6 @@
 
 - Follow the existing style in each touched file (some files differ).
 - Avoid reformatting unrelated lines.
-- Use semicolons consistently.
-- Prefer trailing commas where already in use.
 
 ### Imports
 
@@ -62,6 +59,7 @@
   - All shared/pure utilities go in `src/lib/utils/*`
   - Do not create new utility folders. One pool: `src/lib/utils/`.
   - Before adding a new helper, check `src/lib/utils/` first and extend existing helpers when appropriate.
+  - Never write a utility function in a context of where it's used. Always put it in the appropriate utils folder and import it.
 - Prefer inline expressions for trivial one-off formatting; only extract helpers when there is meaningful reuse or domain logic.
 - When extracting a helper, use a name that communicates domain meaning. Avoid aliases that add indirection without behavior.
 
@@ -82,11 +80,10 @@
 
 - Prefer `async/await` over long promise chains.
 - If a promise is intentionally not awaited, handle rejection with `.catch`.
-- Keep shared mutable state localized.
 
 ## Svelte
 
-- Do not use $effect unless you absolutely have to.
+- Do not use $effect unless you absolutely have to, most things don't need side effects.
 - Prefer nested SvelteKit layouts for shared route-level UI composition; do not introduce wrapper components when a layout hierarchy solves it.
 - When using Svelte don't fallback to react practices. If a global manager/store is the source of truth, read it directly where it is used.
 - Components own their own data. If data is in a global store or available from the route (`page.params`, `page.route`), read it directly where it's used. Do not compute it in a parent and pass it down as props unless the parent truly owns that data or behavior.
@@ -116,7 +113,7 @@
 - NEVER use $derived or $derived.by for running side effects. $derived and $derived.by are strictly for deriving state.
 - Always program to avoid side effects or mysterious behavior.
 - Always prefer small components and refactor when they are getting too large.
-- Do not write `onclick={() => { void handleSavePreWork(); }}`. Use `onclick={handleSavePreWork}` or, if the handler name matches, shorthand like `{onclick}`.
+- Do not write `onclick={() => { void handleSavePreWork(); }}`. Prefer `onclick={handleSavePreWork}` or, if the handler name matches, shorthand like `{onclick}`.
 
 ## Testing conventions
 
@@ -136,5 +133,6 @@
 ## CSS
 
 - CSS should be systemic avoiding one off styles in routes unless absolutely needed.
+- Always prefer existing CSS vars, tokens and systems before creating new ones.
 - CSS customization should be done at a global level via an imported css file OR scoped to a component.
 - Never add a "button" class to a `<button>` element.
