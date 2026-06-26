@@ -1,0 +1,26 @@
+{
+  "name": "fallow-skills",
+  "owner": {
+    "name": "Bart Waardenburg",
+    "email": "bart@fallow.tools"
+  },
+  "metadata": {
+    "description": "Agent skills for finding and removing dead code, unused dependencies, and code duplication in JavaScript/TypeScript projects using fallow",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "fallow",
+      "source": "./fallow",
+      "description": "Dead code analysis, duplication detection, complexity hotspots, and auto-fix for JavaScript/TypeScript using fallow",
+      "version": "1.0.0",
+      "author": {
+        "name": "Bart Waardenburg"
+      },
+      "homepage": "https://docs.fallow.tools",
+      "repository": "https://github.com/fallow-rs/fallow-skills",
+      "license": "MIT",
+      "keywords": ["fallow", "dead-code", "duplication", "complexity", "circular-dependencies", "static-analysis", "javascript", "typescript"]
+    }
+  ]
+}
