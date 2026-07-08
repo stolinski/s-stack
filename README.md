@@ -9,6 +9,8 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | Skill | What it does |
 | --- | --- |
 | [design-engineering](skills/design-engineering/) | Design, build, review, and polish UIs, motion, and interaction details across any stack. |
+| [ui-design-critique](skills/ui-design-critique/) | Strict, prioritized design critique — findings ranked by impact and classified as gaps, inconsistencies, suggestions, or strengths, incl. AI-slop detection and DESIGN.md conformance. |
+| [grill-design](skills/grill-design/) | Grill you one question at a time to define a unique, anti-slop visual identity, then author and lint a valid DESIGN.md. |
 | [ux-interface-design](skills/ux-interface-design/) | Make interfaces self-evident and low-friction — trim helper copy, sharpen affordances and hierarchy. |
 | [html](skills/html/) | Write and review semantic, accessible, low-noise HTML and template markup. |
 | [typography](skills/typography/) | Font pairing, type scales, variable fonts, OpenType features, and web-font performance. |
@@ -60,6 +62,7 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | [loop-me](skills/loop-me/) | Turn recurring personal/work loops into implementable workflow specs. |
 | [handoff](skills/handoff/) | Compact the current conversation into a handoff doc for another agent. |
 | [dex](skills/dex/) | Persistent task management with GitHub/Shortcut sync. |
+| [critique-to-dex](skills/critique-to-dex/) | Turn a prioritized critique/findings report into a Dex epic with priority-ranked, well-contextualized tasks. |
 | [zoom-out](skills/zoom-out/) | Step up a level for a higher-level map of relevant modules and callers. |
 
 ### Writing & Email
