@@ -35,9 +35,9 @@ Only `subject`, and per finding `title`, `priority`, `classification`, and `issu
 - **id** must be stable so tasks trace back to the report. If the source has none, assign `F-01`, `F-02`, … in report order.
 - **recommendation** becomes the "How"; **issue**+**location** the "What"; **impact** the "Why". Derive "Done when" from the recommendation.
 
-## Adapter: ui-design-critique
+## Adapter: critique report contract (ui-design-critique / ux-critique)
 
-The `ui-design-critique` report maps 1:1:
+`ui-design-critique` and `ux-critique` share one report contract, so this single adapter covers both. The `ux-critique` report adds a `## Flow Walkthrough` section (context for the epic, not findings) and uses UX dimensions, but the finding block, `[F-01]` ids, `P0–P3` sections, `· classification` tags, and `What Works`/`What Looks Good` strengths are identical. Map 1:1:
 
 | Report field | Contract field |
 |--------------|----------------|
@@ -51,9 +51,9 @@ The `ui-design-critique` report maps 1:1:
 | **Impact** | `impact` |
 | **Evidence** | `evidence` |
 | **Recommendation** | `recommendation` |
-| **What Looks Good** bullets | findings with `classification: Strength` |
+| **What Looks Good** / **What Works** bullets | findings with `classification: Strength` |
 
-The report is already priority-sorted (P0→P3), so preserve its order.
+Both reports are already priority-sorted (P0→P3), so preserve their order. For `ux-critique`, the `## Flow Walkthrough` section feeds the epic description, not individual tasks.
 
 ## Adapter: Generic Prioritized List
 

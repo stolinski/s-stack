@@ -39,9 +39,9 @@ Common findings: flat lists that should be grouped (P1); overloaded screens (P1)
 - What emotion does the interface evoke — and is that intentional?
 - Does it match the brand personality (from the spec, if present)?
 - Does it feel trustworthy / approachable / premium / playful — whatever it should?
-- Would the target user think "this is for me"?
+- Would the target user think "this is for me"? If a `USERS.md` exists, test the aesthetic against each user type's `resonance_cue` — a dense pro tool that feels like a playful consumer app fails resonance even if it's attractive.
 
-Common findings: tone mismatch vs. brand intent (Inconsistency/P1); no discernible personality (Suggestion→Gap depending on product).
+Common findings: tone mismatch vs. brand intent (Inconsistency/P1); aesthetic contradicts a user type's `resonance_cue` (Inconsistency/P1); no discernible personality (Suggestion→Gap depending on product).
 
 ## 5. Discoverability & Affordance
 

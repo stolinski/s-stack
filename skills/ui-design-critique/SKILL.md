@@ -28,7 +28,8 @@ Accept any of these; ask only if none are available:
 | Live URL / running dev server | Capture visually — see `references/visual-capture.md` |
 | Screenshot(s) | Evaluate the image directly |
 | Component / page code | Read the code, and render + capture if a dev server is available |
-| `DESIGN.md` (or brand doc) | Load as source of truth — see `references/design-md-spec.md` |
+| `DESIGN.md` (or brand doc) | Load as source of truth for *how it looks* — see `references/design-md-spec.md` |
+| `USERS.md` (personas) | Load for *who it's for* — the `resonance_cue` per user type drives the Emotional Resonance check |
 
 If no design spec is provided, ask once whether a `DESIGN.md` or brand guideline exists. If none exists, critique against general craft standards and note the absence of a spec as a gap (intent cannot be verified).
 
@@ -37,6 +38,7 @@ If no design spec is provided, ask once whether a `DESIGN.md` or brand guideline
 ### 1. Establish intent (source of truth)
 
 - If a `DESIGN.md` exists, load it and its tokens. Run `references/design-md-spec.md`. Optionally lint it: `npx @google/design.md lint DESIGN.md`.
+- If a `USERS.md` exists (from `grill-users`), load the target users and their `resonance_cue` — the aesthetic is judged partly on whether each user type would feel "this is for me" (dimension 4, Emotional Resonance).
 - If only a brand/style doc exists, extract stated colors, type, tone, and personality.
 - If nothing exists, state the intended audience and product category from context, and flag "no design spec" as a finding.
 

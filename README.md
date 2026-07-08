@@ -10,6 +10,8 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | --- | --- |
 | [design-engineering](skills/design-engineering/) | Design, build, review, and polish UIs, motion, and interaction details across any stack. |
 | [ui-design-critique](skills/ui-design-critique/) | Strict, prioritized design critique — findings ranked by impact and classified as gaps, inconsistencies, suggestions, or strengths, incl. AI-slop detection and DESIGN.md conformance. |
+| [ux-critique](skills/ux-critique/) | Strict, prioritized UX critique — walks the real flow, ranks friction by impact on task success, flags dark patterns; shares the critique report contract with ui-design-critique. |
+| [grill-users](skills/grill-users/) | Grill you one question at a time to define who the app is for — distinct user types, goals, and resonance cues — then author a USERS.md that feeds the critiques and grill-design. |
 | [grill-design](skills/grill-design/) | Grill you one question at a time to define a unique, anti-slop visual identity, then author and lint a valid DESIGN.md. |
 | [ux-interface-design](skills/ux-interface-design/) | Make interfaces self-evident and low-friction — trim helper copy, sharpen affordances and hierarchy. |
 | [html](skills/html/) | Write and review semantic, accessible, low-noise HTML and template markup. |
