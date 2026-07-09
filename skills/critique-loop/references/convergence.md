@@ -41,7 +41,7 @@ Stop the loop when ANY holds. Report which one tripped.
 
 | Condition | Test | Meaning |
 |-----------|------|---------|
-| **Converged** | No P0 or P1 findings remain | Clean enough to ship; P2/P3 can be deferred |
+| **Converged** | No P0 or P1 findings remain **AND the objective gate passes** (below) | Clean enough to ship; P2/P3 can be deferred |
 | **Steady state** | No Regressions and no actionable New/Persisting (only P3/suggestions left) | Further looping yields diminishing returns |
 | **Thrash** | Regressions ≥ Resolved this round | Changes are net-negative; stop before making it worse |
 | **Persisting wall** | A finding persisted across 2 consecutive fix attempts | The fix approach is wrong — needs a human decision, not another round |
@@ -49,6 +49,14 @@ Stop the loop when ANY holds. Report which one tripped.
 | **User stop** | The user ends the loop at a round boundary | — |
 
 Default "done" is **Converged** (no P0/P1). Confirm the target with the user if they want a stricter bar (e.g. zero findings) or a looser one (e.g. no P0 only).
+
+## The Objective Gate
+
+Critic judgment alone must not close the loop — if the critic misses breakage, the loop "converges" on a broken subject. When the critique skill defines a deterministic check (e.g. `ui-design-critique`'s broken-UI smoke test in `references/broken-ui-detectors.md`), **Converged additionally requires that check to return clean at every viewport in its matrix**, re-run fresh in the final round.
+
+- Detector hits present but no P0/P1 in the report = the report is wrong, not the gate. Feed the hits back in as findings and continue.
+- If the critique skill has no deterministic check (e.g. a pure flow-walk UX critique), the gate is N/A — note that convergence rests on judgment only.
+- Never substitute an earlier round's gate result; the gate is only valid against the final round's build.
 
 ## Thrash Detection
 

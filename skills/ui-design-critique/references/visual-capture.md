@@ -2,9 +2,12 @@
 
 A design critique must be based on what the interface actually renders, not on reading code alone. Capture the real pixels across states and viewports before judging.
 
+Capture is for **confirming and communicating** defects; **finding** structural breakage is the job of the deterministic detectors (`references/broken-ui-detectors.md`) — vision review of screenshots misses overflow, overlap, clipping, and small misalignment even when they are obvious to a human. Run the detectors; use screenshots as evidence.
+
 ## Contents
 - Tool selection
 - Find the right URL first
+- Capture fidelity rules (non-negotiable)
 - What to capture
 - Sampling real values
 - Working from screenshots only
@@ -27,6 +30,16 @@ Do not guess the port. Verify before navigating:
 1. Check the project's dev config for a custom port (e.g. `vite.config.ts` → `server.port`).
 2. Check running dev-server output.
 3. Confirm with `lsof -i :<port>` (common defaults: `5173` Vite, `3000` Next/React, `4173` Vite preview, `8080`).
+
+## Capture Fidelity Rules (Non-Negotiable)
+
+A defect that isn't in the pixels you look at cannot be found. Low-fidelity capture is the single biggest cause of missed "obviously broken" UI:
+
+1. **Full resolution, always.** Never downscale review captures. On `argent`, pass `scale: 1.0` explicitly — the default is 0.3, which erases 2–8px defects entirely.
+2. **Tile long pages; never rely on one full-page shot.** A full-page screenshot of a tall page compresses every component into a thumbnail. Capture viewport-height segments: screenshot, scroll one viewport (`window.scrollBy(0, innerHeight)`), repeat until the bottom. Judge each tile at full size.
+3. **Resize the window to the target viewport before capturing** (`resize_page` / device emulation) — do not simulate mobile by squinting at a desktop shot.
+4. **Crop-zoom anything suspicious.** If a region might be off, capture that element/region alone (element screenshot by `uid`, or scroll it to center and shoot the viewport) and inspect it at full size before deciding.
+5. **Evidence screenshots per finding.** Every visual finding carries a capture of the specific element/region, not just the page it sits on.
 
 ## What to Capture
 
@@ -61,6 +74,7 @@ To compare against a DESIGN.md spec, get actual values, not guesses:
   ```
 - Use `chrome-devtools` MCP `lighthouse_audit` (accessibility) or the snapshot for contrast signals.
 - Sample the primary action, headings, body text, and a representative card/surface.
+- For the measured precision audit (dimension 11), sample **sets of like elements** (all cards, all rows, all primary buttons, all inputs) with `getBoundingClientRect` + `getComputedStyle` — see `references/precision-audit.md` for the exact snippets. Inconsistent spacing/sizing is only visible across a set.
 
 ## Working From Screenshots Only
 

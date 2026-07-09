@@ -48,11 +48,11 @@ If starting fresh: run the chosen critique, then `critique-to-dex` to create the
 
 ### 2. Complete the epic
 
-Work every actionable task to done, delegating the building to the appropriate implementation skill. For each task: implement the fix, then **verify it** the way that critique verifies (re-walk the flow for `ux-critique`; re-capture the screen for `ui-design-critique`) plus the project's own gates (build/check/tests). Mark each task complete in `dex` with concrete evidence. Do not mark the epic done on intent — only on verified completion.
+Work every actionable task to done, delegating the building to the appropriate implementation skill — for UI/visual fixes apply `design-engineering` craft rather than hacking CSS ad hoc (ad-hoc edits are the usual cause of spacing/alignment regressions each round). Use the exact target values from the finding's recommendation. For each task: implement the fix, then **verify it** the way that critique verifies (re-walk the flow for `ux-critique`; re-capture the screen for `ui-design-critique`) plus the project's own gates (build/check/tests). Mark each task complete in `dex` with concrete evidence. Do not mark the epic done on intent — only on verified completion.
 
 ### 3. Re-run the same critique
 
-Run the identical critique skill against the identical scope with the identical anchors. Produce a fresh report (the **current finding set**).
+Run the identical critique skill against the identical scope with the identical anchors. Produce a fresh report (the **current finding set**). If the critique defines a deterministic check (e.g. `ui-design-critique`'s broken-UI smoke test), it must actually be re-run this round — a report whose smoke test was skipped or carried over from a prior round is invalid for comparison.
 
 ### 4. Compare to the prior round
 
@@ -64,7 +64,7 @@ Emit the round report (template below): counts, the delta lists, and the new pri
 
 ### 6. Decide
 
-Apply the stop conditions in `references/convergence.md`. If continuing, feed the current finding set into `critique-to-dex` to create the next round's epic (Persisting and Regression findings carry a note that a prior fix attempt failed), then loop to step 1 as round N+1.
+Apply the stop conditions in `references/convergence.md`. **Converged requires both** no P0/P1 findings **and** a passing objective gate (the critique's deterministic check, re-run fresh this round) — critic judgment alone never closes the loop when a deterministic check exists. If continuing, feed the current finding set into `critique-to-dex` to create the next round's epic (Persisting and Regression findings carry a note that a prior fix attempt failed), then loop to step 1 as round N+1.
 
 ## Autonomy
 
@@ -85,6 +85,7 @@ Default: **confirm at each round boundary** — present the round report and ask
 - **Critique:** [skill] · **Anchors:** [DESIGN.md/USERS.md + user type] (constant) · **Scope:** [same]
 - **Epic:** <epic_id> — [M/M tasks verified]
 - **Current findings:** X — P0: _ · P1: _ · P2: _ · P3: _
+- **Objective gate:** Clean at [viewports] / X detector hits / N/A (critique has no deterministic check)
 
 ### Delta vs Round N-1
 - **⚠ Regressions (new, caused by this round):** [F-ids + titles] — or None
@@ -101,7 +102,7 @@ CONVERGED — [reason] · or · CONTINUE → round N+1 epic <id> · or · STOP �
 
 ```markdown
 ## Critique Loop Complete — [subject]
-- **Rounds:** N · **Outcome:** Converged / Stopped ([reason])
+- **Rounds:** N · **Outcome:** Converged / Stopped ([reason]) · **Objective gate:** Passed / Failed / N/A
 - **Trajectory:** Round 1 [P0/P1 count] → Round N [P0/P1 count]
 - **Resolved overall:** [count] · **Still open:** [remaining findings by priority]
 - **Unresolved escalations:** [persisting findings needing human judgment, if any]

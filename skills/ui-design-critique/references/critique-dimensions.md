@@ -1,6 +1,6 @@
 # Critique Dimensions
 
-Evaluate every dimension. For each issue: name the element/location, state what is wrong and why it matters, then classify (Gap / Inconsistency / Suggestion / Strength) and assign a priority (P0–P3). AI Slop is dimension 1 and lives in `ai-slop-detection.md`; the nine below complete the pass.
+Evaluate every dimension. For each issue: name the element/location, state what is wrong and why it matters, then classify (Gap / Inconsistency / Suggestion / Strength) and assign a priority (P0–P3). AI Slop is dimension 1 and lives in `ai-slop-detection.md`; Spacing/Alignment/Execution is dimension 11 and is **measured**, not judged — it lives in `precision-audit.md`.
 
 ## Contents
 1. AI Slop Detection → see `ai-slop-detection.md`
@@ -13,8 +13,9 @@ Evaluate every dimension. For each issue: name the element/location, state what 
 8. Color with Purpose
 9. States & Edge Cases
 10. Microcopy & Voice
+11. Spacing, Alignment & Execution → see `precision-audit.md` (measured)
 
-Use these probing questions to find issues. A "no" is usually a finding.
+Use these probing questions to find issues. A "no" is usually a finding. Dimensions 2–10 are judgment; dimension 11 is measured with real pixel values — most "it looks broken / sloppy" problems are found there, so never skip it.
 
 ## 2. Visual Hierarchy
 
@@ -53,6 +54,8 @@ Common findings: tone mismatch vs. brand intent (Inconsistency/P1); aesthetic co
 Common findings: buttons that look like text or vice versa (P1); missing hover/focus feedback (Gap/P2); actions buried behind hover on touch (P1).
 
 ## 6. Composition & Balance
+
+Composition is the *macro* judgment (weight, whitespace intent, asymmetry). The *micro* execution of spacing/alignment is measured in dimension 11 — do not settle for "spacing feels off" here; take it to the precision audit and produce numbers.
 
 - Does the layout feel balanced, or uncomfortably weighted?
 - Is whitespace used intentionally, or is it just leftover?
@@ -99,6 +102,18 @@ Common findings: unhandled empty/loading/error (Gap/P0–P1); dead-end error cop
 - Does error copy help the user fix the problem?
 
 Common findings: vague button labels ("Submit", "OK") (P2); jargon or robotic tone (P2); blaming error copy (P1); generic boilerplate (see AI slop).
+
+## 11. Spacing, Alignment & Execution (Measured)
+
+The dimension that catches "it looks broken / sloppy." Do not eyeball it — **measure** and report numbers. Full method and JS snippets in `precision-audit.md`. In brief, measure across sets of like elements:
+
+- **Spacing:** padding/margin/gap on a consistent scale (or `DESIGN.md` `spacing` tokens); consistent across like elements.
+- **Alignment:** shared edges/baselines within ~1px; content on a consistent grid.
+- **Sizing:** same-role controls the same height (buttons vs. inputs), consistent icon sizes, adequate touch targets.
+- **Rhythm:** equal gaps between repeated items; outer group spacing ≥ inner.
+- **Containment:** no overflow, clipping, unintended truncation, or ragged wrapping.
+
+Common findings: inconsistent card padding 14/16/13px (Inconsistency/P2); 2px label/input misalignment (Inconsistency/P1); button 38px vs input 40px (Inconsistency/P1); content overflow or elements touching edges (Gap/P0–P1). Every finding's recommendation must state the exact value and target.
 
 ## Distinguishing Findings from Taste
 
