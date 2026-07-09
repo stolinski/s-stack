@@ -65,6 +65,7 @@ Yeah, I have skills. They might help you, or they might be too niche and specifi
 | [handoff](skills/handoff/) | Compact the current conversation into a handoff doc for another agent. |
 | [dex](skills/dex/) | Persistent task management with GitHub/Shortcut sync. |
 | [critique-to-dex](skills/critique-to-dex/) | Turn a prioritized critique/findings report into a Dex epic with priority-ranked, well-contextualized tasks. |
+| [critique-loop](skills/critique-loop/) | Complete a critique's Dex epic, re-run the same critique, and report resolved / persisting / new / regressed findings — looping until it converges or hits a stop condition. |
 | [zoom-out](skills/zoom-out/) | Step up a level for a higher-level map of relevant modules and callers. |
 
 ### Writing & Email
